@@ -6,15 +6,22 @@
  * This library file contains many common functions, implemented in C#, created&modified by crifan.
  * 
  * [Version]
- * v2.5
+ * v2.8
+ * 
+ * [update]
+ * 2012-10-24
  * 
  * [Author]
  * Crifan
  * 
  * [Contact]
+ * http://www.crifan.com/crifan_released_all/crifanlib/
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * v2.8
+ * 1.add transZhcnToEn, translateString, getCurVerStr
+ * 
  * v2.5:
  * 1. add postDataStr for getUrlResponse
  * 2. add functions: removeInvChrInPath, getCurTaskbarSize, getCurTaskbarLocation, getCornerLocation
@@ -36,7 +43,8 @@ using System.Runtime.Serialization.Formatters.Binary;
 using System.Text;
 using System.Drawing;
 using System.Windows.Forms;
-
+using System.Reflection;
+using System.Diagnostics;
 
 public class crifanLib
 {
@@ -1282,6 +1290,81 @@ public class crifanLib
         return realReadoutLen;
     }
 
+    //-----------------------------------------------------------------------------
+    //translate strToTranslate from fromLanguage to toLanguage
+    //return the translated string
+    //return empty string if error
+    //some frequently used language abbrv:
+    //Chinese Simplified:   zh-CN
+    //Chinese Traditional:  zh-TW
+    //English:              en
+    //German:               de
+    //Japanese:             ja
+    //Korean:               ko
+    //French:               fr    
+    //more can be found at: 
+    //http://code.google.com/intl/ru/apis/language/translate/v2/using_rest.html#language-params
+    public string translateString(string strToTranslate, string fromLanguage, string toLanguage)
+    {
+        string translatedStr = "";
+        string transRetHtml = "";
+
+        ////following refer: http://python.u85.us/viewnews-335.html
+        //string googleTranslateUrl = "http://translate.google.cn/translate_t";
+        //Dictionary<string, string> postDict = new Dictionary<string, string>();
+        //postDict.Add("hl", "zh-CN");
+        //postDict.Add("ie", "UTF-8");
+        //postDict.Add("text", strToTranslate);
+        //postDict.Add("langpair", fromLanguage + "|" + toLanguage);
+        //const string googleTransHtmlCharset = "UTF-8";
+        //string transRetHtml = getUrlRespHtml(googleTranslateUrl, null,googleTransHtmlCharset, postDict);
+
+
+        ////http://translate.google.cn/#zh-CN/en/%E4%BB%96%E4%BB%AC%E6%98%AF%E8%BF%99%E6%A0%B7%E8%AF%B4%E7%9A%84
+        //string googleTransBaseUrl = "http://translate.google.cn/#";
+        //strToTranslate = "他们是这样说的";
+        //string encodedStr = HttpUtility.UrlEncode(strToTranslate);
+        //string googleTransUrl = googleTransBaseUrl + fromLanguage + "/" + toLanguage + "/" + encodedStr;
+        //string transRetHtml = getUrlRespHtml(googleTransUrl);
+
+
+        //http://translate.google.cn/translate_a/t?client=t&text=%E4%BB%96%E4%BB%AC%E6%98%AF%E8%BF%99%E6%A0%B7%E8%AF%B4%E7%9A%84&hl=zh-CN&sl=zh-CN&tl=en&ie=UTF-8&oe=UTF-8&multires=1&ssel=0&tsel=0&sc=1
+        //strToTranslate = "他们是这样说的";
+        string encodedStr = HttpUtility.UrlEncode(strToTranslate);
+        string googleTransBaseUrl = "http://translate.google.cn/translate_a/t?";
+        string googleTransUrl = googleTransBaseUrl;
+        googleTransUrl  += "&client=" + "t";
+        googleTransUrl += "&text=" + encodedStr;
+        googleTransUrl += "&hl=" + "zh-CN";
+        googleTransUrl += "&sl=" + fromLanguage;// source   language
+        googleTransUrl += "&tl=" + toLanguage;  // to       language
+        googleTransUrl += "&ie=" + "UTF-8";     // input    encode
+        googleTransUrl += "&oe=" + "UTF-8";     // output   encode
+
+        try
+        {
+            transRetHtml = getUrlRespHtml(googleTransUrl);
+            //[[["They say","他们是这样说的","","Tāmen shì zhèyàng shuō de"]],,"zh-CN",,[["They",[5],0,0,1000,0,1,0],["say",[6],1,0,1000,1,2,0]],[["他们 是",5,[["They",1000,0,0],["they are",0,0,0],["they were",0,0,0],["that they are",0,0,0],["they are the",0,0,0]],[[0,3]],"他们是这样说的"],["这样 说",6,[["say",1000,1,0],["said",0,1,0],["say so",0,1,0],["says",0,1,0],["say this",0,1,0]],[[3,6]],""]],,,[["zh-CN"]],1]
+            
+            if (extractSingleStr(@"\[\[\[""(.+?)"","".+?"",", transRetHtml, out translatedStr))
+            {
+                //extrac out:They say
+            }
+        }
+        catch
+        {
+            // if pass some special string, such as "彭德怀", then will occur 500 error
+            // here tmp not process the error, just omit it here
+        }
+        
+        return translatedStr;
+    }
+
+    public string transZhcnToEn(string strToTranslate)
+    {
+        return translateString(strToTranslate, "zh-CN", "en");
+    }
+
     /*********************************************************************/
     /* File */
     /*********************************************************************/
@@ -1428,4 +1511,15 @@ public class crifanLib
         return new Point(xPos, yPos);
     }
 
+    /*********************************************************************/
+    /* Runtime */
+    /*********************************************************************/
+    public string getCurVerStr()
+    {
+        string curVerStr = "";
+        Assembly asm = Assembly.GetExecutingAssembly();
+        FileVersionInfo fvi = FileVersionInfo.GetVersionInfo(asm.Location);
+        curVerStr = String.Format("{0}.{1}", fvi.ProductMajorPart, fvi.ProductMinorPart);
+        return curVerStr;
+    }
 }
