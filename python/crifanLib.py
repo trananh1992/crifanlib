@@ -14,6 +14,9 @@ crifan's common functions, implemented by Python.
 1. use htmlentitydefs instead of mannually made html entity table
 
 [History]
+[v2.4]
+1. add another manuallyDownloadFile with headerDict support
+
 [v2.3]
 1. add removeSoupContentsTagAttr, findFirstNavigableString, soupContentsToUnicode
 
@@ -67,7 +70,7 @@ import random;
 
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v2.3";
+__VERSION__ = "v2.4";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -116,6 +119,7 @@ def genSufList() :
 
 #------------------------------------------------------------------------------
 # get current time's timestamp
+# 1351670162
 def getCurTimestamp() :
     return datetimeToTimestamp(datetime.now());
 
@@ -737,7 +741,7 @@ def downloadFile(fileUrl, fileToSave, needReport = False) :
 
 #------------------------------------------------------------------------------
 # manually download fileUrl then save to fileToSave
-def manuallyDownloadFile(fileUrl, fileToSave) :
+def manuallyDownloadFile(fileUrl, fileToSave):
     isDownOK = False;
     downloadingFile = '';
 
@@ -753,6 +757,26 @@ def manuallyDownloadFile(fileUrl, fileToSave) :
             respHtml = getUrlRespHtml(realUrl, useGzip=False, timeout=gConst['defaultTimeout']);
             
             isDownOK = saveBinDataToFile(respHtml, fileToSave);
+        else :
+            print "Input download file url is NULL";
+    except urllib.ContentTooShortError(msg) :
+        isDownOK = False;
+    except :
+        isDownOK = False;
+
+    return isDownOK;
+
+#------------------------------------------------------------------------------
+# manually download fileUrl then save to fileToSave, with header support
+def manuallyDownloadFile(fileUrl, fileToSave, headerDict):
+    isDownOK = False;
+    downloadingFile = '';
+
+    try :
+        if fileUrl :
+            respHtml = getUrlRespHtml(fileUrl, headerDict=headerDict,useGzip=False, timeout=gConst['defaultTimeout']);
+            if(respHtml):
+                isDownOK = saveBinDataToFile(respHtml, fileToSave);
         else :
             print "Input download file url is NULL";
     except urllib.ContentTooShortError(msg) :
