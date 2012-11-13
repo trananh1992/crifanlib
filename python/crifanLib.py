@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.1]
+1. merge two manuallyDownloadFile int one
+
 [v3.0]
 1. add initAutoHandleCookies, getCurrentCookies, printCurrentCookies
 
@@ -83,7 +86,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.0";
+__VERSION__ = "v3.1";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -786,41 +789,25 @@ def downloadFile(fileUrl, fileToSave, needReport = False) :
     return isDownOK;
 
 #------------------------------------------------------------------------------
-# manually download fileUrl then save to fileToSave
-def manuallyDownloadFile(fileUrl, fileToSave):
+def manuallyDownloadFile(fileUrl, fileToSave, headerDict=""):
+    """manually download fileUrl then save to fileToSave, with header support"""
+    
     isDownOK = False;
-    downloadingFile = '';
 
     try :
         if fileUrl :
-            # 1. find real address
-            #print "fileUrl=",fileUrl;
-            resp = urllib2.urlopen(fileUrl, timeout=gConst['defaultTimeout']);
-            #print "resp=",resp;
-            realUrl = resp.geturl(); # not same with original file url if redirect
+            respHtml = "";
+            if(headerDict):
+                respHtml = getUrlRespHtml(fileUrl, headerDict=headerDict,useGzip=False, timeout=gConst['defaultTimeout']);
+            else:
+                # 1. find real address
+                #print "fileUrl=",fileUrl;
+                resp = urllib2.urlopen(fileUrl, timeout=gConst['defaultTimeout']);
+                #print "resp=",resp;
+                realUrl = resp.geturl(); # not same with original file url if redirect
+                # if url is invalid, then add timeout can avoid dead
+                respHtml = getUrlRespHtml(realUrl, useGzip=False, timeout=gConst['defaultTimeout']);
             
-            # if url is invalid, then add timeout can avoid dead
-            respHtml = getUrlRespHtml(realUrl, useGzip=False, timeout=gConst['defaultTimeout']);
-            
-            isDownOK = saveBinDataToFile(respHtml, fileToSave);
-        else :
-            print "Input download file url is NULL";
-    except urllib.ContentTooShortError(msg) :
-        isDownOK = False;
-    except :
-        isDownOK = False;
-
-    return isDownOK;
-
-#------------------------------------------------------------------------------
-# manually download fileUrl then save to fileToSave, with header support
-def manuallyDownloadFile(fileUrl, fileToSave, headerDict):
-    isDownOK = False;
-    downloadingFile = '';
-
-    try :
-        if fileUrl :
-            respHtml = getUrlRespHtml(fileUrl, headerDict=headerDict,useGzip=False, timeout=gConst['defaultTimeout']);
             if(respHtml):
                 isDownOK = saveBinDataToFile(respHtml, fileToSave);
         else :
