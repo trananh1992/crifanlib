@@ -5,15 +5,18 @@
 crifanLib.py
 
 [Function]
-crifan's common functions, implemented by Python.
+crifan's common functions, implemented by Python 2.x.
 
 [Note]
 1. install chardet and BeautifulSoup before use this crifanLib.
 
 [TODO]
-1. use htmlentitydefs instead of mannually made html entity table
 
 [History]
+[v2.7]
+1. add decodeHtmlEntity, htmlEntityCodepointToName, 
+2. rename replaceStrEntToNumEnt to htmlEntityNameToCodepoint
+
 [v2.4]
 1. add another manuallyDownloadFile with headerDict support
 
@@ -59,18 +62,19 @@ import urllib2;
 from datetime import datetime,timedelta;
 from BeautifulSoup import BeautifulSoup,Tag,CData;
 import logging;
-#import htmlentitydefs;
 import struct;
 import zlib;
-
 import random;
 
 # from PIL import Image;
 # from operator import itemgetter;
 
+#Note: The htmlentitydefs module has been renamed to html.entities in Python 3.0.
+# so htmlentitydefs is only available between Python 2.3 and Python 2.7
+import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v2.4";
+__VERSION__ = "v2.7";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -153,6 +157,10 @@ def calcTimeEnd(uniqueKey) :
     global gVal
 
     return time.time() - gVal['calTimeKeyDict'][uniqueKey];
+    
+################################################################################
+# HTML
+################################################################################
 
 #------------------------------------------------------------------------------
 # convert local GMT8 to GMT time
@@ -160,6 +168,120 @@ def calcTimeEnd(uniqueKey) :
 def convertLocalToGmt(localTime) :
     return localTime - timedelta(hours=8);
 
+def decodeHtmlEntity(origHtml, decodedEncoding=""):
+    """Decode html entity (name/decimal code point/hex code point) into unicode char (and then encode to decodedEncoding encoding char if decodedEncoding is not empty)
+    eg: from &copy; or &#169; or &#xa9; or &#xA9; to unicode '©', then encode to decodedEncoding if decodedEncoding is not empty
+    
+    Note:
+    Some special char can NOT show in some encoding, such as ©  can NOT show in GBK
+
+    Related knowledge:
+    http://www.htmlhelp.com/reference/html40/entities/latin1.html
+    http://www.htmlhelp.com/reference/html40/entities/special.html
+    """
+    decodedHtml = "";
+
+    #A dictionary mapping XHTML 1.0 entity definitions to their replacement text in ISO Latin-1
+    # 'zwnj': '&#8204;',
+    # 'aring': '\xe5',
+    # 'gt': '>',
+    # 'yen': '\xa5',
+    #logging.debug("htmlentitydefs.entitydefs=%s", htmlentitydefs.entitydefs);
+    
+    #A dictionary that maps HTML entity names to the Unicode codepoints
+    # 'aring': 229,
+    # 'gt': 62,
+    # 'sup': 8835,
+    # 'Ntilde': 209,
+    #logging.debug("htmlentitydefs.name2codepoint=%s", htmlentitydefs.name2codepoint);
+    
+    #A dictionary that maps Unicode codepoints to HTML entity names
+    # 8704: 'forall',
+    # 8194: 'ensp',
+    # 8195: 'emsp',
+    # 8709: 'empty',
+    #logging.debug("htmlentitydefs.codepoint2name=%s", htmlentitydefs.codepoint2name);
+
+    #http://fredericiana.com/2010/10/08/decoding-html-entities-to-text-in-python/
+    decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', lambda matched: unichr(htmlentitydefs.name2codepoint[matched.group("entityName")]), origHtml);
+    #print "type(decodedEntityName)=",type(decodedEntityName); #type(decodedEntityName)= <type 'unicode'>
+    decodedCodepointInt = re.sub('&#(?P<codePointInt>\d{2,5});', lambda matched: unichr(int(matched.group("codePointInt"))), decodedEntityName);
+    #print "decodedCodepointInt=",decodedCodepointInt;
+    decodedCodepointHex = re.sub('&#x(?P<codePointHex>[a-fA-F\d]{2,5});', lambda matched: unichr(int(matched.group("codePointHex"), 16)), decodedCodepointInt);
+    #print "decodedCodepointHex=",decodedCodepointHex;
+
+    #logging.info("origHtml=%s", origHtml);
+    decodedHtml = decodedCodepointHex;
+    #logging.info("decodedHtml=%s", decodedHtml);
+    
+    if(decodedEncoding):
+        # note: here decodedHtml is unicode
+        decodedHtml = decodedHtml.encode(decodedEncoding, 'ignore');
+        #print "after encode into decodedEncoding=%s, decodedHtml=%s"%(decodedEncoding, decodedHtml);
+        
+    return decodedHtml;
+
+#------------------------------------------------------------------------------
+def htmlEntityNameToCodepoint(htmlWithEntityName):
+    """Convert html's entity name into entity code point
+    eg: from &nbsp; to &#160; 
+    
+    related knowledge:
+    http://www.htmlhelp.com/reference/html40/entities/latin1.html
+    http://www.htmlhelp.com/reference/html40/entities/special.html
+    """
+
+    # 'aring':  229,
+    # 'gt':     62,
+    # 'sup':    8835,
+    # 'Ntilde': 209,
+    
+    # "&aring;":"&#229;",
+    # "&gt":    "&#62;",
+    # "&sup":   "&#8835;",
+    # "&Ntilde":"&#209;",
+    nameToCodepointDict = {};
+    for eachName in htmlentitydefs.name2codepoint:
+        fullName = "&" + eachName + ";";
+        fullCodepoint = "&#" + str(htmlentitydefs.name2codepoint[eachName]) + ";";
+        nameToCodepointDict[fullName] = fullCodepoint;
+
+    #"&aring;" -> "&#229;"
+    htmlWithCodepoint = htmlWithEntityName;
+    for key in nameToCodepointDict.keys() :
+        htmlWithCodepoint = re.compile(key).sub(nameToCodepointDict[key], htmlWithCodepoint);
+    return htmlWithCodepoint;
+
+#------------------------------------------------------------------------------
+def htmlEntityCodepointToName(htmlWithCodepoint):
+    """Convert html's entity code point into entity name
+    eg: from &#160; to &nbsp;
+    
+    related knowledge:
+    http://www.htmlhelp.com/reference/html40/entities/latin1.html
+    http://www.htmlhelp.com/reference/html40/entities/special.html
+    """
+    # 8704: 'forall',
+    # 8194: 'ensp',
+    # 8195: 'emsp',
+    # 8709: 'empty',
+    
+    # "&#8704;": "&forall;",
+    # "&#8194;": "&ensp;",
+    # "&#8195;": "&emsp;",
+    # "&#8709;": "&empty;",
+    codepointToNameDict = {};
+    for eachCodepoint in htmlentitydefs.codepoint2name:
+        fullCodepoint = "&#" + str(eachCodepoint) + ";";
+        fullName = "&" + htmlentitydefs.codepoint2name[eachCodepoint] + ";";
+        codepointToNameDict[fullCodepoint] = fullName;
+
+    #"&#160;" -> "&nbsp;"
+    htmlWithEntityName = htmlWithCodepoint;
+    for key in codepointToNameDict.keys() :
+        htmlWithEntityName = re.compile(key).sub(codepointToNameDict[key], htmlWithEntityName);
+    return htmlWithEntityName;
+    
 ################################################################################
 # String
 ################################################################################
@@ -352,150 +474,6 @@ def removeAnsiCtrlChar(inputString):
         if(isValidChr) :
             validContent += c;
     return validContent;
-
-#------------------------------------------------------------------------------
-# convert the string entity to unicode unmber entity
-# refer: http://www.htmlhelp.com/reference/html40/entities/latin1.html
-# TODO: need later use this htmlentitydefs instead following
-def replaceStrEntToNumEnt(text) :
-    strToNumEntDict = {
-        # Latin-1 Entities
-        "&nbsp;"	:   "&#160;",
-        "&iexcl;"	:   "&#161;",
-        "&cent;"    :   "&#162;",
-        "&pound;"	:   "&#163;",
-        "&curren;"	:   "&#164;",
-        "&yen;"	    :   "&#165;",
-        "&brvbar;"	:   "&#166;",
-        "&sect;"	:   "&#167;",
-        "&uml;"	    :   "&#168;",
-        "&copy;"	:   "&#169;",
-        "&ordf;"	:   "&#170;",
-        "&laquo;"	:   "&#171;",
-        "&not;"	    :   "&#172;",
-        "&shy;"	    :   "&#173;",
-        "&reg;"	    :   "&#174;",
-        "&macr;"	:   "&#175;",
-        "&deg;"	    :   "&#176;",
-        "&plusmn;"	:   "&#177;",
-        "&sup2;"	:   "&#178;",
-        "&sup3;"	:   "&#179;",
-        "&acute;"	:   "&#180;",
-        "&micro;"	:   "&#181;",
-        "&para;"	:   "&#182;",
-        "&middot;"	:   "&#183;",
-        "&cedil;"	:   "&#184;",
-        "&sup1;"    :   "&#185;",
-        "&ordm;"    :   "&#186;",
-        "&raquo;"	:   "&#187;",
-        "&frac14;"	:   "&#188;",
-        "&frac12;"	:   "&#189;",
-        "&frac34;"	:   "&#190;",
-        "&iquest;"	:   "&#191;",
-        "&Agrave;"	:   "&#192;",
-        "&Aacute;"	:   "&#193;",
-        "&Acirc;"	:   "&#194;",
-        "&Atilde;"	:   "&#195;",
-        "&Auml;"	:   "&#196;",
-        "&Aring;"	:   "&#197;",
-        "&AElig;"	:   "&#198;",
-        "&Ccedil;"	:   "&#199;",
-        "&Egrave;"	:   "&#200;",
-        "&Eacute;"	:   "&#201;",
-        "&Ecirc;"	:   "&#202;",
-        "&Euml;"    :   "&#203;",
-        "&Igrave;"	:   "&#204;",
-        "&Iacute;"	:   "&#205;",
-        "&Icirc;"	:   "&#206;",
-        "&Iuml;"    :   "&#207;",
-        "&ETH;"	    :   "&#208;",
-        "&Ntilde;"	:   "&#209;",
-        "&Ograve;"	:   "&#210;",
-        "&Oacute;"	:   "&#211;",
-        "&Ocirc;"	:   "&#212;",
-        "&Otilde;"	:   "&#213;",
-        "&Ouml;"	:   "&#214;",
-        "&times;"	:   "&#215;",
-        "&Oslash;"	:   "&#216;",
-        "&Ugrave;"	:   "&#217;",
-        "&Uacute;"	:   "&#218;",
-        "&Ucirc;"	:   "&#219;",
-        "&Uuml;"	:   "&#220;",
-        "&Yacute;"	:   "&#221;",
-        "&THORN;"	:   "&#222;",
-        "&szlig;"	:   "&#223;",
-        "&agrave;"	:   "&#224;",
-        "&aacute;"	:   "&#225;",
-        "&acirc;"	:   "&#226;",
-        "&atilde;"	:   "&#227;",
-        "&auml;"	:   "&#228;",
-        "&aring;"	:   "&#229;",
-        "&aelig;"	:   "&#230;",
-        "&ccedil;"	:   "&#231;",
-        "&egrave;"	:   "&#232;",
-        "&eacute;"	:   "&#233;",
-        "&ecirc;"	:   "&#234;",
-        "&euml;"	:   "&#235;",
-        "&igrave;"	:   "&#236;",
-        "&iacute;"	:   "&#237;",
-        "&icirc;"	:   "&#238;",
-        "&iuml;"	:   "&#239;",
-        "&eth;"	    :   "&#240;",
-        "&ntilde;"	:   "&#241;",
-        "&ograve;"	:   "&#242;",
-        "&oacute;"	:   "&#243;",
-        "&ocirc;"	:   "&#244;",
-        "&otilde;"	:   "&#245;",
-        "&ouml;" 	:   "&#246;",
-        "&divide;"	:   "&#247;",
-        "&oslash;"	:   "&#248;",
-        "&ugrave;"	:   "&#249;",
-        "&uacute;"	:   "&#250;",
-        "&ucirc;"	:   "&#251;",
-        "&uuml;"	:   "&#252;",
-        "&yacute;"	:   "&#253;",
-        "&thorn;"	:   "&#254;",
-        "&yuml;"	:   "&#255;",
-        # http://www.htmlhelp.com/reference/html40/entities/special.html
-        # Special Entities
-        "&quot;"    : "&#34;",
-        "&amp;"     : "&#38;",
-        "&lt;"      : "&#60;",
-        "&gt;"      : "&#62;",
-        "&OElig;"   : "&#338;",
-        "&oelig;"   : "&#339;",
-        "&Scaron;"  : "&#352;",
-        "&scaron;"  : "&#353;",
-        "&Yuml;"    : "&#376;",
-        "&circ;"    : "&#710;",
-        "&tilde;"   : "&#732;",
-        "&ensp;"    : "&#8194;",
-        "&emsp;"    : "&#8195;",
-        "&thinsp;"  : "&#8201;",
-        "&zwnj;"    : "&#8204;",
-        "&zwj;"     : "&#8205;",
-        "&lrm;"     : "&#8206;",
-        "&rlm;"     : "&#8207;",
-        "&ndash;"   : "&#8211;",
-        "&mdash;"   : "&#8212;",
-        "&lsquo;"   : "&#8216;",
-        "&rsquo;"   : "&#8217;",
-        "&sbquo;"   : "&#8218;",
-        "&ldquo;"   : "&#8220;",
-        "&rdquo;"   : "&#8221;",
-        "&bdquo;"   : "&#8222;",
-        "&dagger;"  : "&#8224;",
-        "&Dagger;"  : "&#8225;",
-        "&permil;"  : "&#8240;",
-        "&lsaquo;"  : "&#8249;",
-        "&rsaquo;"  : "&#8250;",
-        "&euro;"    : "&#8364;",
-        }
-
-    replacedText = text;
-    for key in strToNumEntDict.keys() :
-        replacedText = re.compile(key).sub(strToNumEntDict[key], replacedText);
-    return replacedText;
 
 #------------------------------------------------------------------------------
 # convert the xxx=yyy into tuple('xxx', yyy), then return the tuple value
