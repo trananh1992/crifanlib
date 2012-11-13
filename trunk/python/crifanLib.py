@@ -8,11 +8,18 @@ crifanLib.py
 crifan's common functions, implemented by Python 2.x.
 
 [Note]
-1. install chardet and BeautifulSoup before use this crifanLib.
+1. detailed explanation about this lib:
+crifan的Python库：crifanLib.py
+http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summary.html#crifanlib_py
+
+2. install chardet and BeautifulSoup before use this crifanLib.
 
 [TODO]
 
 [History]
+[v3.0]
+1. add initAutoHandleCookies, getCurrentCookies, printCurrentCookies
+
 [v2.7]
 1. add decodeHtmlEntity, htmlEntityCodepointToName, 
 2. rename replaceStrEntToNumEnt to htmlEntityNameToCodepoint
@@ -57,14 +64,16 @@ import re;
 import sys;
 import time;
 import chardet;
-import urllib;
-import urllib2;
 from datetime import datetime,timedelta;
 from BeautifulSoup import BeautifulSoup,Tag,CData;
 import logging;
 import struct;
 import zlib;
 import random;
+
+import urllib;
+import urllib2;
+import cookielib;
 
 # from PIL import Image;
 # from operator import itemgetter;
@@ -74,7 +83,7 @@ import random;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v2.7";
+__VERSION__ = "v3.0";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -94,7 +103,10 @@ gVal = {
     'picSufChars'       : '', # store the pic suffix char list
     
     'currentLevel'      : 0,
+    
+    'cj'                : None, # used to store current cookiejar, to support auto handle cookies
 }
+
 
 #### some internal functions ###
 #------------------------------------------------------------------------------
@@ -598,6 +610,62 @@ def saveBinDataToFile(binaryData, fileToSave):
 
 
 ################################################################################
+# Cookies
+################################################################################
+
+#------------------------------------------------------------------------------
+def initAutoHandleCookies():
+    """Add cookiejar to support auto handle cookies.
+    
+    Note:
+    after this init, later urllib2.urlopen will automatically handle cookies
+    """
+    
+    gVal['cj'] = cookielib.CookieJar();
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(gVal['cj']));
+    urllib2.install_opener(opener);
+    
+    #print "Auto handle cookies inited OK";
+    return ;
+
+#------------------------------------------------------------------------------
+def getCurrentCookies():
+    """Return current cookies.
+    
+    Note:
+    only call this this function, if you previously called initAutoHandleCookies
+    """
+    return gVal['cj'];
+
+#------------------------------------------------------------------------------
+def printCurrentCookies():
+    """Just print current cookies for debug simplicity.
+    """
+    if(gVal['cj']):
+        for index, cookie in enumerate(gVal['cj']):
+            print "[%d] name=%s,value=%s,domain=%s,path=%s,secure=%s,expires=%s,version=%d"% \
+                (index, cookie.name, cookie.value, cookie.domain, cookie.path, cookie.secure, cookie.expires, cookie.version);
+
+#------------------------------------------------------------------------------
+def checkAllCookiesExist(cookieNameList, cookieJar) :
+    """Check all cookies('s name) in cookiesDict is exist in cookieJar or not"""
+    cookiesDict = {};
+    for eachCookieName in cookieNameList :
+        cookiesDict[eachCookieName] = False;
+    
+    allCookieFound = True;
+    for cookie in cookieJar :
+        if(cookie.name in cookiesDict) :
+            cookiesDict[cookie.name] = True;
+    
+    for eachCookie in cookiesDict.keys() :
+        if(not cookiesDict[eachCookie]) :
+            allCookieFound = False;
+            break;
+
+    return allCookieFound;
+
+################################################################################
 # Network: urllib/urllib2/http
 ################################################################################
 
@@ -765,10 +833,15 @@ def manuallyDownloadFile(fileUrl, fileToSave, headerDict):
     return isDownOK;
 
 #------------------------------------------------------------------------------
-# get response from url
-# note: if you have already used cookiejar, then here will automatically use it
-# while using rllib2.Request
 def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
+    """Get response from url, support optional postDict,headerDict,timeout,useGzip
+
+    Note:
+    1. if postDict not null, url request auto become to POST instead of default GET
+    2  if you want to auto handle cookies, should call initAutoHandleCookies() before use this function.
+       then following urllib2.Request will auto handle cookies
+    """
+
     # makesure url is string, not unicode, otherwise urllib2.urlopen will error
     url = str(url);
 
@@ -843,28 +916,6 @@ def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True) :
 
     return respHtml;
 
-################################################################################
-# Cookies
-################################################################################
-
-#------------------------------------------------------------------------------
-# check all cookies in cookiesDict is exist in cookieJar or not
-def checkAllCookiesExist(cookieNameList, cookieJar) :
-    cookiesDict = {};
-    for eachCookieName in cookieNameList :
-        cookiesDict[eachCookieName] = False;
-    
-    allCookieFound = True;
-    for cookie in cookieJar :
-        if(cookie.name in cookiesDict) :
-            cookiesDict[cookie.name] = True;
-    
-    for eachCookie in cookiesDict.keys() :
-        if(not cookiesDict[eachCookie]) :
-            allCookieFound = False;
-            break;
-
-    return allCookieFound;
 
 ################################################################################
 # Image
