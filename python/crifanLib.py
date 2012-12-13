@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.2]
+1. add ConvertELogStrToValue
+
 [v3.1]
 1. merge two manuallyDownloadFile int one
 
@@ -73,6 +76,7 @@ import logging;
 import struct;
 import zlib;
 import random;
+import math;
 
 import urllib;
 import urllib2;
@@ -131,7 +135,42 @@ def genSufList() :
     wholeSuf = joinedSuf + swapedSuf;
 
     return wholeSuf;
+
+################################################################################
+# Math
+################################################################################
+def ConvertELogStrToValue(eLogStr):
+    """
+    convert string of natural logarithm base of E to value
+    return (convertOK, convertedValue)
+    eg:
+    input:  -1.1694737e-003
+    output: -0.0582246670563
     
+    input:  8.9455025e-004
+    output: 0.163843
+    """
+    
+    (convertOK, convertedValue) = (False, 0.0);
+    foundEPower = re.search("(?P<coefficientPart>-?\d+\.\d+)e(?P<ePowerPart>-\d+)", eLogStr, re.I);
+    #print "foundEPower=",foundEPower;
+    if(foundEPower):
+        coefficientPart = foundEPower.group("coefficientPart");
+        ePowerPart = foundEPower.group("ePowerPart");
+        #print "coefficientPart=%s,ePower=%s"%(coefficientPart, ePower);
+        coefficientValue = float(coefficientPart);
+        ePowerValue = float(ePowerPart);
+        #print "coefficientValue=%f,ePowerValue=%f"%(coefficientValue, ePowerValue);
+        #math.e= 2.71828182846
+        wholeOrigValue = coefficientValue * math.pow(math.e, ePowerValue);
+        #print "wholeOrigValue=",wholeOrigValue;
+        
+        (convertOK, convertedValue) = (True, wholeOrigValue);
+    else:
+        (convertOK, convertedValue) = (False, 0.0);
+    
+    return (convertOK, convertedValue);
+
 ################################################################################
 # Time
 ################################################################################
