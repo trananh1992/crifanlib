@@ -6,10 +6,10 @@
  * This library file contains many common functions, implemented in C#, created&modified by crifan.
  * 
  * [Version]
- * v2.8
+ * v2.9
  * 
  * [update]
- * 2012-10-24
+ * 2012-12-13
  * 
  * [Author]
  * Crifan
@@ -19,6 +19,10 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * v2.9:
+ * 1. add Application.DoEvents for getUrlRespStreamBytes for up layer UI update
+ * 2. add functions: getCurDownloadPercent
+ * 
  * v2.8
  * 1.add transZhcnToEn, translateString, getCurVerStr
  * 
@@ -62,6 +66,9 @@ public class crifanLib
     List<string> cookieFieldList = new List<string>();
 
     CookieCollection curCookies = null;
+
+    private long totalLength = 0;
+    private long currentLength = 0;
 
     public crifanLib()
     {
@@ -1247,6 +1254,19 @@ public class crifanLib
         return getUrlRespHtml(url, "");
     }
 
+    //return current download percentage (max=100)
+    public int getCurDownloadPercent()
+    {
+        int curPercent = 0;
+        if ((currentLength > 0) && (totalLength > 0))
+        {
+            //NOTE: here currentLength * 100 maybe exceed 2^31=2147483648, so here must use long, can NOT use int
+            //otherwise it will becomd nagative value
+            curPercent = (int)((currentLength * 100) / totalLength);
+        }
+                
+        return (int)curPercent;
+    }
 
     public int getUrlRespStreamBytes(ref Byte[] respBytesBuf,
                                     string url,
@@ -1255,34 +1275,43 @@ public class crifanLib
                                     int timeout)
     {
         int curReadoutLen;
-        int curBufPos = 0;
         int realReadoutLen = 0;
+        int curBufPos = 0;
 
         try
         {
             //HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout);
             HttpWebResponse resp = getUrlResponse(url, headerDict, postDict);
-            int expectReadoutLen = (int)resp.ContentLength;
+            long expectReadoutLen = resp.ContentLength;
+
+            totalLength = expectReadoutLen;
+            currentLength = 0;
 
             Stream binStream = resp.GetResponseStream();
             //int streamDataLen  = (int)binStream.Length; // erro: not support seek operation
 
             do
             {
+                //let up layer update its UI, otherwise up layer UI will no response during this func exec time
+                System.Windows.Forms.Application.DoEvents();
+                
                 // here download logic is:
                 // once request, return some data
                 // request multiple time, until no more data
-                curReadoutLen = binStream.Read(respBytesBuf, curBufPos, expectReadoutLen);
+                curReadoutLen = binStream.Read(respBytesBuf, curBufPos, (int)expectReadoutLen);
                 if (curReadoutLen > 0)
                 {
                     curBufPos += curReadoutLen;
+
+                    currentLength = curBufPos;
+
                     expectReadoutLen = expectReadoutLen - curReadoutLen;
 
                     realReadoutLen += curReadoutLen;
                 }
             } while (curReadoutLen > 0);
         }
-        catch
+        catch(Exception ex)
         {
             realReadoutLen = -1;
         }
