@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.3]
+1.add genListStr
+
 [v3.2]
 1. add ConvertELogStrToValue
 
@@ -90,7 +93,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.1";
+__VERSION__ = "v3.3";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -339,6 +342,26 @@ def htmlEntityCodepointToName(htmlWithCodepoint):
 ################################################################################
 # String
 ################################################################################
+
+def genListStr(listValue, encForUniVal="UTF-8", isRetainLastComma = False):
+    """
+    input: ["20121202", "天平山赏红枫", "动物"]
+    output: 20121202,天平山赏红枫,动物
+    """
+    print "listValue=",listValue;
+
+    generatedListStr = "";
+    for eachValue in listValue:
+        if(isinstance(eachValue, unicode)):
+            generatedListStr += eachValue.encode(encForUniVal) + ",";
+        else:
+            generatedListStr += str(eachValue) + ",";
+
+    if(not isRetainLastComma):
+        if(generatedListStr and (generatedListStr[-1] == ",")):
+            #remove last ,
+            generatedListStr = generatedListStr[:-1];
+    return generatedListStr;
 
 #------------------------------------------------------------------------------
 # generated the random digits number string
