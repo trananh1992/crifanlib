@@ -343,22 +343,24 @@ def htmlEntityCodepointToName(htmlWithCodepoint):
 # String
 ################################################################################
 
-def genListStr(listValue, encForUniVal="UTF-8", isRetainLastComma = False):
+def genListStr(listValue, encForUniVal="UTF-8", isRetainLastComma = False, delimiter=","):
     """
+    generate string of values in list, separated by delimiter
+    eg:
     input: ["20121202", "天平山赏红枫", "动物"]
     output: 20121202,天平山赏红枫,动物
     """
-    print "listValue=",listValue;
+    #print "listValue=",listValue;
 
     generatedListStr = "";
     for eachValue in listValue:
         if(isinstance(eachValue, unicode)):
-            generatedListStr += eachValue.encode(encForUniVal) + ",";
+            generatedListStr += eachValue.encode(encForUniVal) + delimiter;
         else:
-            generatedListStr += str(eachValue) + ",";
+            generatedListStr += str(eachValue) + delimiter;
 
     if(not isRetainLastComma):
-        if(generatedListStr and (generatedListStr[-1] == ",")):
+        if(generatedListStr and (generatedListStr[-1] == delimiter)):
             #remove last ,
             generatedListStr = generatedListStr[:-1];
     return generatedListStr;
