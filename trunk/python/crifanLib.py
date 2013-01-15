@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.4]
+1. initAutoHandleCookies support cookie file.
+
 [v3.3]
 1.add genListStr
 
@@ -93,11 +96,13 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.3";
+__VERSION__ = "v3.4";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
+    #'constUserAgent' : "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
     #'constUserAgent' : "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
+    
     
     # also belong to ContentTypes, more info can refer: http://kenya.bokee.com/3200033.html
     # here use Tuple to avoid unexpected change
@@ -115,6 +120,7 @@ gVal = {
     'currentLevel'      : 0,
     
     'cj'                : None, # used to store current cookiejar, to support auto handle cookies
+    'cookieUseFile'     : False,
 }
 
 
@@ -680,20 +686,34 @@ def saveBinDataToFile(binaryData, fileToSave):
 # Cookies
 ################################################################################
 
-#------------------------------------------------------------------------------
-def initAutoHandleCookies():
+def initAutoHandleCookies(localCookieFileName=None):
     """Add cookiejar to support auto handle cookies.
+    support designate cookie file
     
     Note:
     after this init, later urllib2.urlopen will automatically handle cookies
     """
-    
-    gVal['cj'] = cookielib.CookieJar();
+
+    if(localCookieFileName):
+        gVal['cookieUseFile'] = True;
+        #print "use cookie file";
+        
+        #gVal['cj'] = cookielib.FileCookieJar(localCookieFileName); #NotImplementedError
+        gVal['cj'] = cookielib.LWPCookieJar(localCookieFileName); # prefer use this
+        #gVal['cj'] = cookielib.MozillaCookieJar(localCookieFileName); # second consideration
+        #create cookie file
+        gVal['cj'].save();
+    else:
+        #print "not use cookie file";
+        gVal['cookieUseFile'] = False;
+        
+        gVal['cj'] = cookielib.CookieJar();
+
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(gVal['cj']));
     urllib2.install_opener(opener);
-    
+
     #print "Auto handle cookies inited OK";
-    return ;
+    return;
 
 #------------------------------------------------------------------------------
 def getCurrentCookies():
@@ -935,6 +955,10 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
         resp = urllib2.urlopen(req, timeout=timeout);
     else :
         resp = urllib2.urlopen(req);
+    
+    #update cookies into local file
+    if(gVal['cookieUseFile']):
+        gVal['cj'].save();
     
     return resp;
 
