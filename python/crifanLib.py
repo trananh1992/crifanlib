@@ -19,6 +19,7 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [History]
 [v3.5]
 1.output downloading size support print to same line.
+2. add removeInvalidCharInFilename
 
 [v3.4]
 1. initAutoHandleCookies support cookie file.
@@ -514,6 +515,19 @@ def findSimilarUrl(url, urlList) :
 # from green-waste to greenwaste
 def removeNonWordChar(inputString) :
     return re.sub(r"[^\w]", "", inputString); # non [a-zA-Z0-9_]
+
+def removeInvalidCharInFilename(inputFilename, replacedChar=""):
+	"""
+	Remove invalid char in filename
+	eg: 
+	《神魔手下好当差/穿越之傀儡娃娃》全集
+	《神魔手下好当差_穿越之傀儡娃娃》全集
+	"""
+	filteredFilename = inputFilename;
+	invalidCharList = ['^', '~', '<', '>', '*', '?', '/', '\\', '!'];
+	for eachInvalidChar in invalidCharList:
+		filteredFilename = filteredFilename.replace(eachInvalidChar, replacedChar);
+	return filteredFilename;
 
 #------------------------------------------------------------------------------
 # remove control character from input string
