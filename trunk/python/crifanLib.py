@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.5]
+1.output downloading size support print to same line.
+
 [v3.4]
 1. initAutoHandleCookies support cookie file.
 
@@ -96,7 +99,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.4";
+__VERSION__ = "v3.5";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -851,7 +854,7 @@ def downloadFile(fileUrl, fileToSave, needReport = False) :
         if copiedBlocks == 0 : # 1st call : once on establishment of the network connection
             print 'Begin to download %s, total size=%d'%(downloadingFile, totalFileSize);
         else : # rest call : once after each block read thereafter
-            print 'Downloaded bytes: %d' % ( blockSize * copiedBlocks);
+            print 'Downloaded bytes: %d\r' % ( blockSize * copiedBlocks),;
         return;
     #---------------------------------------------------------------------------
 
