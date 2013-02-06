@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.6]
+1. add formatString
+
 [v3.5]
 1.output downloading size support print to same line.
 2. add removeInvalidCharInFilename
@@ -100,7 +103,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.5";
+__VERSION__ = "v3.6";
 
 gConst = {
     'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -352,6 +355,15 @@ def htmlEntityCodepointToName(htmlWithCodepoint):
 ################################################################################
 # String
 ################################################################################
+
+def formatString(inputStr, paddingChar="=", totalWidth=80):
+    """
+    format string, to replace for:
+    print '{0:=^80}'.format("xxx");
+    """
+    formatting = "{0:" + paddingChar + "^" + str(totalWidth) + "}";
+    return formatting.format(inputStr);
+    
 
 def genListStr(listValue, encForUniVal="UTF-8", isRetainLastComma = False, delimiter=","):
     """
