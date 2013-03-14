@@ -9,7 +9,7 @@
  * v2.9
  * 
  * [update]
- * 2012-12-13
+ * 2013-03-14
  * 
  * [Author]
  * Crifan
@@ -1182,6 +1182,12 @@ public class crifanLib
                                 Dictionary<string, string> postDict)
     {
         return getUrlResponse(url, headerDict, postDict, 0, "");
+    }
+
+    public HttpWebResponse getUrlResponse(string url,
+                            Dictionary<string, string> headerDict)
+    {
+        return getUrlResponse(url, headerDict, null);
     }
 
     public HttpWebResponse getUrlResponse(string url)
