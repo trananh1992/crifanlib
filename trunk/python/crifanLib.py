@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.7]
+1. fixbug -> add user-agent for isFileValid
+
 [v3.6]
 1. add formatString
 
@@ -106,10 +109,8 @@ import htmlentitydefs;
 __VERSION__ = "v3.6";
 
 gConst = {
-    'constUserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
-    #'constUserAgent' : "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)",
-    #'constUserAgent' : "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
-    
+    'UserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
+    #'UserAgent' : "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:15.0) Gecko/20100101 Firefox/15.0.1",
     
     # also belong to ContentTypes, more info can refer: http://kenya.bokee.com/3200033.html
     # here use Tuple to avoid unexpected change
@@ -814,7 +815,14 @@ def isFileValid(fileUrl) :
         lowUnquotedOrigFilename = unquotedOrigFilenname.lower();
         #print "lowUnquotedOrigFilename=",lowUnquotedOrigFilename;
         
-        resp = urllib2.urlopen(fileUrl, timeout=gConst['defaultTimeout']); # note: Python 2.6 has added timeout support.
+        #resp = urllib2.urlopen(fileUrl, timeout=gConst['defaultTimeout']); # note: Python 2.6 has added timeout support.
+        #some url, such as
+        #http://my.csdn.net/uploads/201205/03/1336006009_2164.jpg
+        #if not give user-agent, then will error: HTTP Error 403: Forbidden
+        request = urllib2.Request(fileUrl, headers={'User-Agent' : gConst['UserAgent']});
+        #print "request=",request;
+        resp = urllib2.urlopen(request, timeout=gConst['defaultTimeout']);
+        
         #print "resp=",resp;
         realUrl = resp.geturl();
         #print "realUrl=",realUrl;
@@ -906,7 +914,8 @@ def manuallyDownloadFile(fileUrl, fileToSave, headerDict=""):
     """manually download fileUrl then save to fileToSave, with header support"""
     
     isDownOK = False;
-
+    errReason = "No error";
+    
     try :
         if fileUrl :
             respHtml = "";
@@ -925,11 +934,17 @@ def manuallyDownloadFile(fileUrl, fileToSave, headerDict=""):
                 isDownOK = saveBinDataToFile(respHtml, fileToSave);
         else :
             print "Input download file url is NULL";
-    except urllib.ContentTooShortError(msg) :
+    except urllib2.URLError,reason:
         isDownOK = False;
+        errReason = reason;
+    except urllib2.HTTPError,code :
+        isDownOK = False;
+        errReason = code;
     except :
         isDownOK = False;
+        errReason = "Unknown error";
 
+    #print "isDownOK=%s, errReason=%s"%(isDownOK, errReason);
     return isDownOK;
 
 #------------------------------------------------------------------------------
@@ -958,7 +973,7 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
             req.add_header(key, headerDict[key]);
 
     defHeaderDict = {
-        'User-Agent'    : gConst['constUserAgent'],
+        'User-Agent'    : gConst['UserAgent'],
         'Cache-Control' : 'no-cache',
         'Accept'        : '*/*',
         'Connection'    : 'Keep-Alive',
