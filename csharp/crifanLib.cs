@@ -6,10 +6,10 @@
  * This library file contains many common functions, implemented in C#, created&modified by crifan.
  * 
  * [Version]
- * v2.9
+ * v3.4
  * 
  * [update]
- * 2013-03-14
+ * 2013-03-26
  * 
  * [Author]
  * Crifan
@@ -19,6 +19,13 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v3.4]
+ * 1. add getDomainAlexaRank, getDomainPageRank, getDomainUrl
+ * 
+ * [v3.1]
+ * 1.convert getUrlResponse and getUrlRespStreamBytes into BackgroundWorker version
+ *   to ehance UI response during these operation
+ * 
  * v2.9:
  * 1. add Application.DoEvents for getUrlRespStreamBytes for up layer UI update
  * 2. add functions: getCurDownloadPercent
@@ -49,6 +56,7 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.Reflection;
 using System.Diagnostics;
+using System.ComponentModel;
 
 public class crifanLib
 {
@@ -67,8 +75,21 @@ public class crifanLib
 
     CookieCollection curCookies = null;
 
-    private long totalLength = 0;
-    private long currentLength = 0;
+    //private long totalLength = 0;
+    //private long currentLength = 0;
+
+    //indicate background worker complete or not
+    bool bNotCompleted_resp = true;
+    //store response of http request
+    private HttpWebResponse gCurResp = null;
+
+
+    private BackgroundWorker gBgwDownload;
+    //indicate download complete or not
+    bool bNotCompleted_download = true;
+    //store current read out data len
+    private int gRealReadoutLen = 0;
+    Action<int> gFuncUpdateProgress = null;
 
     public crifanLib()
     {
@@ -86,6 +107,8 @@ public class crifanLib
 
         //init for calc time
         calcTimeList = new Dictionary<string, DateTime>();
+
+        gBgwDownload = new BackgroundWorker();
     }
 
     /*------------------------Private Functions------------------------------*/
@@ -312,7 +335,31 @@ public class crifanLib
         }
         return domain;
     }
+    
+    //extrat the domain url from original url
+    //from
+    //http://answers.yahoo.com/question/index?qid=20130323071141AA8PffP
+    //get
+    //http://answers.yahoo.com
+    public string getDomainUrl(string url)
+    {
+        string domainUrl = "";
 
+        Regex urlRx = new Regex(@"((https)|(http)|(ftp))://[\w\-\.]+");
+        Match foundUrl = urlRx.Match(url);
+        if (foundUrl.Success)
+        {
+            //int slashIndex = foundUrl.Index + foundUrl.Length;
+            domainUrl = url.Substring(0, foundUrl.Length);
+        }
+        else
+        {
+            domainUrl = "";
+        }
+
+        return domainUrl;
+    }
+    
     //add recognized cookie field: expires/domain/path/secure/httponly/version, into cookie
     public bool addFieldToCookie(ref Cookie ck, pairItem pairInfo)
     {
@@ -1044,7 +1091,7 @@ public class crifanLib
 
     /* get url's response
      * */
-    public HttpWebResponse getUrlResponse(string url,
+    public HttpWebResponse _getUrlResponse(string url,
                                     Dictionary<string, string> headerDict,
                                     Dictionary<string, string> postDict,
                                     int timeout,
@@ -1176,7 +1223,95 @@ public class crifanLib
 
         return resp;
     }
+            
+    private void getUrlResponse_bw(string url,
+                                    Dictionary<string, string> headerDict,
+                                    Dictionary<string, string> postDict,
+                                    int timeout,
+                                    string postDataStr)
+    {
+        // Create a background thread
+        BackgroundWorker bgwGetUrlResp = new BackgroundWorker();
+        bgwGetUrlResp.DoWork += new DoWorkEventHandler(bgwGetUrlResp_DoWork);
+        bgwGetUrlResp.RunWorkerCompleted += new RunWorkerCompletedEventHandler( bgwGetUrlResp_RunWorkerCompleted );
 
+        //init
+        bNotCompleted_resp = true;
+            
+        // run in another thread
+        object paraObj = new object[] {url, headerDict, postDict, timeout, postDataStr};
+        bgwGetUrlResp.RunWorkerAsync(paraObj);
+    }
+
+    private void bgwGetUrlResp_DoWork(object sender, DoWorkEventArgs e)
+    {
+        object[] paraObj = (object[])e.Argument;
+        string url = (string)paraObj[0];
+        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[1];
+        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[2];
+        int timeout = (int)paraObj[3];
+        string postDataStr = (string)paraObj[4];
+
+        e.Result = _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);
+    }
+
+    //void m_bgWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
+    //{
+    //    bRespNotCompleted = true;
+    //}
+
+    private void bgwGetUrlResp_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+    {
+        // The background process is complete. We need to inspect
+        // our response to see if an error occurred, a cancel was
+        // requested or if we completed successfully.
+
+        // Check to see if an error occurred in the
+        // background process.
+        if (e.Error != null)
+        {
+            //MessageBox.Show(e.Error.Message);
+            return;
+        }
+
+        // Check to see if the background process was cancelled.
+        if (e.Cancelled)
+        {
+            //MessageBox.Show("Cancelled ...");
+        }
+        else
+        {
+            bNotCompleted_resp = false;
+
+            // Everything completed normally.
+            // process the response using e.Result
+            //MessageBox.Show("Completed...");
+            gCurResp = (HttpWebResponse)e.Result;
+        }
+    }
+
+    /* get url's response
+    * */
+    public HttpWebResponse getUrlResponse(string url,
+                                    Dictionary<string, string> headerDict,
+                                    Dictionary<string, string> postDict,
+                                    int timeout,
+                                    string postDataStr)
+    {
+        HttpWebResponse localCurResp = null;
+        getUrlResponse_bw(url, headerDict, postDict, timeout, postDataStr);
+        while (bNotCompleted_resp)
+        {
+            System.Windows.Forms.Application.DoEvents();
+        }
+        localCurResp = gCurResp;
+        
+        //clear
+        gCurResp = null;
+
+        return localCurResp;
+    }
+    
     public HttpWebResponse getUrlResponse(string url,
                                 Dictionary<string, string> headerDict,
                                 Dictionary<string, string> postDict)
@@ -1260,29 +1395,132 @@ public class crifanLib
         return getUrlRespHtml(url, "");
     }
 
-    //return current download percentage (max=100)
-    public int getCurDownloadPercent()
-    {
-        int curPercent = 0;
-        if ((currentLength > 0) && (totalLength > 0))
-        {
-            //NOTE: here currentLength * 100 maybe exceed 2^31=2147483648, so here must use long, can NOT use int
-            //otherwise it will becomd nagative value
-            curPercent = (int)((currentLength * 100) / totalLength);
-        }
+    ////return current download percentage (max=100)
+    //public int getCurDownloadPercent()
+    //{
+    //    int curPercent = 0;
+    //    if ((currentLength > 0) && (totalLength > 0))
+    //    {
+    //        //NOTE: here currentLength * 100 maybe exceed 2^31=2147483648, so here must use long, can NOT use int
+    //        //otherwise it will becomd nagative value
+    //        curPercent = (int)((currentLength * 100) / totalLength);
+    //    }
                 
-        return (int)curPercent;
+    //    return (int)curPercent;
+    //}
+
+    //public int _getUrlRespStreamBytes(ref Byte[] respBytesBuf,
+    //                                string url,
+    //                                Dictionary<string, string> headerDict,
+    //                                Dictionary<string, string> postDict,
+    //                                int timeout)
+    //{
+    //    int curReadoutLen;
+    //    int realReadoutLen = 0;
+    //    int curBufPos = 0;
+
+    //    try
+    //    {
+    //        //HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout);
+    //        HttpWebResponse resp = getUrlResponse(url, headerDict, postDict);
+    //        long expectReadoutLen = resp.ContentLength;
+
+    //        totalLength = expectReadoutLen;
+    //        currentLength = 0;
+
+    //        Stream binStream = resp.GetResponseStream();
+    //        //int streamDataLen  = (int)binStream.Length; // erro: not support seek operation
+
+    //        do
+    //        {
+    //            //let up layer update its UI, otherwise up layer UI will no response during this func exec time
+    //            //now has make this function to call by backgroundworker, so not need this to update UI
+    //            //System.Windows.Forms.Application.DoEvents();
+                
+    //            // here download logic is:
+    //            // once request, return some data
+    //            // request multiple time, until no more data
+    //            curReadoutLen = binStream.Read(respBytesBuf, curBufPos, (int)expectReadoutLen);
+    //            if (curReadoutLen > 0)
+    //            {
+    //                curBufPos += curReadoutLen;
+
+    //                currentLength = curBufPos;
+
+    //                expectReadoutLen = expectReadoutLen - curReadoutLen;
+
+    //                realReadoutLen += curReadoutLen;
+    //            }
+    //        } while (curReadoutLen > 0);
+    //    }
+    //    catch(Exception ex)
+    //    {
+    //        realReadoutLen = -1;
+    //    }
+
+    //    return realReadoutLen;
+    //}
+    
+    private void getUrlRespStreamBytes_bw(ref Byte[] respBytesBuf,
+                                string url,
+                                Dictionary<string, string> headerDict,
+                                Dictionary<string, string> postDict,
+                                int timeout,
+                                Action<int> funcUpdateProgress)
+    {
+        // Create a background thread
+        gBgwDownload = new BackgroundWorker();
+        gBgwDownload.DoWork += bgwDownload_DoWork;
+        gBgwDownload.RunWorkerCompleted += bgwDownload_RunWorkerCompleted;
+        gBgwDownload.WorkerReportsProgress = true;
+        gBgwDownload.ProgressChanged += bgwDownload_ProgressChanged;
+
+        //init
+        bNotCompleted_download = true;
+        gFuncUpdateProgress = funcUpdateProgress;
+        
+        // run in another thread
+        object paraObj = new object[] {respBytesBuf, url, headerDict, postDict, timeout};
+        gBgwDownload.RunWorkerAsync(paraObj);
     }
 
-    public int getUrlRespStreamBytes(ref Byte[] respBytesBuf,
-                                    string url,
-                                    Dictionary<string, string> headerDict,
-                                    Dictionary<string, string> postDict,
-                                    int timeout)
+    private void bgwDownload_ProgressChanged(object sender, ProgressChangedEventArgs e)
     {
+        if (gFuncUpdateProgress != null)
+        {
+            // This function fires on the UI thread so it's safe to edit
+            // the UI control directly, no funny business with Control.Invoke.
+            // Update the progressBar with the integer supplied to us from the
+            // ReportProgress() function.  Note, e.UserState is a "tag" property
+            // that can be used to send other information from the
+            // BackgroundThread to the UI thread.
+
+            gFuncUpdateProgress(e.ProgressPercentage);
+        }
+    }
+
+    private void bgwDownload_DoWork(object sender, DoWorkEventArgs e)
+    {
+    //    // The sender is the BackgroundWorker object we need it to
+    //    // report progress and check for cancellation.
+    //    BackgroundWorker gBgwDownload = sender as BackgroundWorker;
+
+        object[] paraObj = (object[])e.Argument;
+        Byte[] respBytesBuf = (Byte[])paraObj[0];
+        string url = (string)paraObj[1];
+        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[2];
+        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[3];
+        int timeout = (int)paraObj[4];
+
+        //e.Result = _getUrlRespStreamBytes(ref respBytesBuf, url, headerDict, postDict, timeout);
+        
+
         int curReadoutLen;
         int realReadoutLen = 0;
         int curBufPos = 0;
+        
+        long totalLength = 0;
+        long currentLength = 0;
 
         try
         {
@@ -1299,8 +1537,9 @@ public class crifanLib
             do
             {
                 //let up layer update its UI, otherwise up layer UI will no response during this func exec time
-                System.Windows.Forms.Application.DoEvents();
-                
+                //now has make this function to call by backgroundworker, so not need this to update UI
+                //System.Windows.Forms.Application.DoEvents();
+
                 // here download logic is:
                 // once request, return some data
                 // request multiple time, until no more data
@@ -1314,16 +1553,85 @@ public class crifanLib
                     expectReadoutLen = expectReadoutLen - curReadoutLen;
 
                     realReadoutLen += curReadoutLen;
+
+                    int currentPercent = (int)((currentLength * 100) / totalLength);
+                    
+                    if (currentPercent < 0)
+                    {
+                        currentPercent = 0;
+                    }
+
+                    if (currentPercent > 100)
+                    {
+                        currentPercent = 100;
+                    }
+
+                    gBgwDownload.ReportProgress(currentPercent);
                 }
             } while (curReadoutLen > 0);
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
             realReadoutLen = -1;
         }
 
+        //return realReadoutLen;
+        
+        e.Result = realReadoutLen;
+        //gBgwDownload.ReportProgress(100);
+    }
+
+    private void bgwDownload_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+    {
+        // The background process is complete. We need to inspect
+        // our response to see if an error occurred, a cancel was
+        // requested or if we completed successfully.
+
+        // Check to see if an error occurred in the
+        // background process.
+        if (e.Error != null)
+        {
+            //MessageBox.Show(e.Error.Message);
+            return;
+        }
+
+        // Check to see if the background process was cancelled.
+        if (e.Cancelled)
+        {
+            //MessageBox.Show("Cancelled ...");
+        }
+        else
+        {
+            bNotCompleted_download = false;
+
+            // Everything completed normally.
+            // process the response using e.Result
+            //MessageBox.Show("Completed...");
+            gRealReadoutLen = (int)e.Result;
+        }
+    }
+    
+    public int getUrlRespStreamBytes(ref Byte[] respBytesBuf,
+                                string url,
+                                Dictionary<string, string> headerDict,
+                                Dictionary<string, string> postDict,
+                                int timeout,
+                                Action<int> funcUpdateProgress)
+    {
+        int realReadoutLen = 0;
+        getUrlRespStreamBytes_bw(ref respBytesBuf, url, headerDict, postDict, timeout, funcUpdateProgress);
+        while (bNotCompleted_download)
+        {
+            System.Windows.Forms.Application.DoEvents();
+        }
+        realReadoutLen = gRealReadoutLen;
+
+        //clear
+        gRealReadoutLen = 0;
+
         return realReadoutLen;
     }
+
 
     //-----------------------------------------------------------------------------
     //translate strToTranslate from fromLanguage to toLanguage
@@ -1400,6 +1708,98 @@ public class crifanLib
         return translateString(strToTranslate, "zh-CN", "en");
     }
 
+    
+    //get page rank for some domain url
+    //para: http://answers.yahoo.com
+    //return: 7
+    public int getDomainPageRank(string domainUrl)
+    {
+        int pageRank = 0;
+
+        ////Method 1: use http://pagerank.webmasterhome.cn/
+        //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
+
+        ////http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
+
+        //string tmpRespHtml = "";
+        //Dictionary<string, string> headerDict;
+        ////(1)to get cookies
+        //string pageRankMainUrl = "http://pagerank.webmasterhome.cn/";
+        //tmpRespHtml = getUrlRespHtml(pageRankMainUrl);
+        ////(2)ask page rank
+        //string firstBaseUrl = "http://pagerank.webmasterhome.cn/?domain=";
+        ////http://pagerank.webmasterhome.cn/?domain=answers.yahoo.com
+        //string firstWholeUrl = firstBaseUrl + noHttpPreDomainUrl;
+        //headerDict = new Dictionary<string, string>();
+        //headerDict.Add("referer", pageRankMainUrl); 
+        //tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict);
+
+        //string baseUrl = "http://pagerank.webmasterhome.cn/prLoading.asp?domain=";
+        ////http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
+        //string queryUrl = baseUrl + noHttpPreDomainUrl;
+        //headerDict = new Dictionary<string, string>();
+        //headerDict.Add("referer", firstWholeUrl);
+        //string respHtml = getUrlRespHtml(queryUrl, headerDict);
+
+        ////'<img src=\"http://primg.webmasterhome.cn/pr7.gif\" style=\"width:40px;height:5px;border:0px;\" alt=PageRank align=absmiddle> (7/10)'
+        //string rankStr = "";
+        //if (extractSingleStr(@"\((\d+)/10\)", respHtml, out rankStr))
+        //{
+        //    pageRank = Int32.Parse(rankStr);
+        //}
+        
+
+        //Method 2: use http://moonsy.com/pagerank_checker/
+
+        //(1) http://moonsy.com/pagerank_checker/
+        string queryUrl = "http://moonsy.com/pagerank_checker/";
+        Dictionary<string, string> postDict = new Dictionary<string, string>();
+        postDict.Add("domain", domainUrl);
+        postDict.Add("Submit", "CHECK");
+
+        string respHtml = getUrlRespHtml(queryUrl, null, postDict);
+
+        //<h3>Your Page Rank: 7/10
+        string rankStr = "";
+        if (extractSingleStr(@"<h3>Your Page Rank.+?(\d+)/10", respHtml, out rankStr))
+        {
+            pageRank = Int32.Parse(rankStr);
+        }
+
+
+        return pageRank;
+    }
+
+    //get alexa rank for some domain url
+    //para: http://answers.yahoo.com
+    //return: 7
+    public int getDomainAlexaRank(string domainUrl)
+    {
+        int alexaRank = 0;
+
+        //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
+
+        //Method 1: use http://moonsy.com/alexa_rank/
+
+        //(1) http://moonsy.com/alexa_rank/
+        string queryUrl = "http://moonsy.com/alexa_rank/";
+        Dictionary<string, string> postDict = new Dictionary<string, string>();
+        //postDict.Add("domain", noHttpPreDomainUrl);
+        postDict.Add("domain", domainUrl);
+        postDict.Add("Submit", "CHECK");
+
+        string respHtml = getUrlRespHtml(queryUrl, null, postDict);
+
+        //<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
+        string alexaRankStr = "";
+        if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
+        {
+            alexaRank = Int32.Parse(alexaRankStr);
+        }
+
+        return alexaRank;
+    }
+    
     /*********************************************************************/
     /* File */
     /*********************************************************************/
