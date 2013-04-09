@@ -3,13 +3,18 @@
  * crifanLib.cs
  * 
  * [Function]
- * This library file contains many common functions, implemented in C#, created&modified by crifan.
+ * This library file contains many common functions, implemented in C#, created by crifan.
+ * 
+ * [Note]
+ * 1.before use htmlToXmlDoc, you must add reference for SgmlReader lib: SgmlReaderDll.dll, and uncomment the related code.
+ * 2.before use htmlToHtmlDoc, you must add reference for HtmlAgilityPack lib: HtmlAgilityPack.dll, and uncomment the related code.
+ * 3.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v3.4
+ * v4.2
  * 
  * [update]
- * 2013-03-26
+ * 2013-04-09
  * 
  * [Author]
  * Crifan
@@ -19,6 +24,12 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v4.2]
+ * 1. add htmlToXmlDoc, htmlToHtmlDoc, and related demo code
+ * 2. add embeded dll into exe related code: init code and CurrentDomain_AssemblyResolve
+ * 3. add dgvDrawHeaderNum, dgvClearContent, dgvExportToExcel, dgvExportToCsv,         
+ * 4. add openFolderAndSelectFile
+ * 
  * [v3.4]
  * 1. add getDomainAlexaRank, getDomainPageRank, getDomainUrl
  * 
@@ -44,6 +55,13 @@
  *  
  */
 
+
+//comment out following macros if not use them
+#define USE_HTML_PARSER_SGML
+#define USE_HTML_PARSER_HTMLAGILITYPACK
+#define USE_DATAGRIDVIEW
+
+
 using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
@@ -57,6 +75,20 @@ using System.Windows.Forms;
 using System.Reflection;
 using System.Diagnostics;
 using System.ComponentModel;
+
+#if USE_HTML_PARSER_SGML
+using Sgml;
+using System.Xml;
+#endif
+
+#if USE_HTML_PARSER_HTMLAGILITYPACK
+using HtmlAgilityPack;
+#endif
+
+#if USE_DATAGRIDVIEW
+using Excel = Microsoft.Office.Interop.Excel;
+using Microsoft.Office.Interop.Excel;
+#endif
 
 public class crifanLib
 {
@@ -1572,6 +1604,7 @@ public class crifanLib
         }
         catch (Exception ex)
         {
+            string errorMessage = ex.Message;
             realReadoutLen = -1;
         }
 
@@ -1772,34 +1805,76 @@ public class crifanLib
 
     //get alexa rank for some domain url
     //para: http://answers.yahoo.com
-    //return: 7
+    //return: 4
     public int getDomainAlexaRank(string domainUrl)
     {
         int alexaRank = 0;
 
         //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
 
-        //Method 1: use http://moonsy.com/alexa_rank/
+        ////Method 1: use http://moonsy.com/alexa_rank/
 
-        //(1) http://moonsy.com/alexa_rank/
-        string queryUrl = "http://moonsy.com/alexa_rank/";
-        Dictionary<string, string> postDict = new Dictionary<string, string>();
-        //postDict.Add("domain", noHttpPreDomainUrl);
-        postDict.Add("domain", domainUrl);
-        postDict.Add("Submit", "CHECK");
+        ////(1) http://moonsy.com/alexa_rank/
+        //string queryUrl = "http://moonsy.com/alexa_rank/";
+        //Dictionary<string, string> postDict = new Dictionary<string, string>();
+        ////postDict.Add("domain", noHttpPreDomainUrl);
+        //postDict.Add("domain", domainUrl);
+        //postDict.Add("Submit", "CHECK");
 
-        string respHtml = getUrlRespHtml(queryUrl, null, postDict);
+        //string respHtml = getUrlRespHtml(queryUrl, null, postDict);
 
-        //<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
-        string alexaRankStr = "";
-        if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
+        ////<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
+        //string alexaRankStr = "";
+        //if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
+        //{
+        //    alexaRank = Int32.Parse(alexaRankStr);
+        //}
+
+
+        //Method 2: use http://www.alexa.com/
+        string tmpUrl = "http://www.alexa.com";
+        //to get cookies
+        string tmpRespHtml = getUrlRespHtml(tmpUrl);
+        //then do work
+        string queryUrl = "http://www.alexa.com/search";
+        //http://www.alexa.com/search?q=crifan.com&r=home_home&p=bigtop
+        queryUrl += "?q=" + domainUrl;
+        queryUrl += "&r=" + "home_home";
+        queryUrl += "&p=" + "bigtop";
+
+        string respHtml = getUrlRespHtml(queryUrl);
+
+        HtmlAgilityPack.HtmlDocument htmlDoc = htmlToHtmlDoc(respHtml);
+        HtmlNode rootHtmlNode = htmlDoc.DocumentNode;
+
+        //<span>
+        //<img class="align-top" src="/images/icons/globe-sm.gif" />
+        //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
+        //<a href="/siteinfo/yahoo.com#trafficstats">
+        //4</a>
+        //</span>
+
+        //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
+        //<a href="/siteinfo/crifan.com#trafficstats">
+        //170,557</a>
+        //</span>
+        //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a[@href]");
+        //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a]");
+        //HtmlNodeCollection trafficHtmlNodes = rootHtmlNode.SelectNodes("//span/span[@class='traffic-stat-label']");
+        HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']");
+        if (trafficHtmlNode.InnerText.StartsWith("Alexa Traffic Rank:"))
         {
-            alexaRank = Int32.Parse(alexaRankStr);
+            HtmlNode parentHtmlNode = trafficHtmlNode.ParentNode;
+            HtmlNode aHrefNode = parentHtmlNode.SelectSingleNode(".//a[@href]");
+            string tracfficNumberStr = aHrefNode.InnerText;
+            tracfficNumberStr = tracfficNumberStr.Trim().Replace(",", "");
+            alexaRank = Int32.Parse(tracfficNumberStr);
         }
 
         return alexaRank;
     }
-    
+
+
     /*********************************************************************/
     /* File */
     /*********************************************************************/
@@ -1829,6 +1904,13 @@ public class crifanLib
 
         return saveOk;
     }
+    
+    //open folder and select file
+    public void openFolderAndSelectFile(string fullFilename)
+    {
+        System.Diagnostics.Process.Start("Explorer.exe", "/select," + fullFilename);
+    }
+
 
     /*********************************************************************/
     /* Screen */
@@ -1873,7 +1955,7 @@ public class crifanLib
     }
 
     // get current taskbar position(X, Y), support 4 mode: taskbar bottom/right/up/left
-    public Point getCurTaskbarLocation()
+    public System.Drawing.Point getCurTaskbarLocation()
     {
         int xPos = 0, yPos = 0;
 
@@ -1906,11 +1988,11 @@ public class crifanLib
             yPos = 0;
         }
 
-        return new Point(xPos, yPos);
+        return new System.Drawing.Point(xPos, yPos);
     }
     
     // get current right bottom corner position(X, Y), support 4 mode: taskbar bottom/right/up/left
-    public Point getCornerLocation(Size windowSize)
+    public System.Drawing.Point getCornerLocation(Size windowSize)
     {
         int xPos = 0, yPos = 0;
 
@@ -1943,7 +2025,7 @@ public class crifanLib
             yPos = Screen.PrimaryScreen.WorkingArea.Height - windowSize.Height;
         }
 
-        return new Point(xPos, yPos);
+        return new System.Drawing.Point(xPos, yPos);
     }
 
     /*********************************************************************/
@@ -1957,4 +2039,360 @@ public class crifanLib
         curVerStr = String.Format("{0}.{1}", fvi.ProductMajorPart, fvi.ProductMinorPart);
         return curVerStr;
     }
+
+    /*********************************************************************/
+    /* HTML Parse */
+    /*********************************************************************/
+
+    #if USE_HTML_PARSER_SGML
+    //convert html to XML document
+    public XmlDocument htmlToXmlDoc(string html)
+    {
+        // setup SgmlReader
+        SgmlReader sgmlReader = new SgmlReader();
+        sgmlReader.DocType = "HTML";
+        sgmlReader.WhitespaceHandling = WhitespaceHandling.All;
+        sgmlReader.CaseFolding = Sgml.CaseFolding.ToLower;
+
+        string decodedHtml = HttpUtility.HtmlDecode(html);
+        sgmlReader.InputStream = new StringReader(decodedHtml);
+
+        // create document
+        XmlDocument xmlDoc = new XmlDocument();
+        xmlDoc.PreserveWhitespace = true;
+        xmlDoc.XmlResolver = null;
+        xmlDoc.Load(sgmlReader);
+
+        return xmlDoc;
+    }
+    #endif
+
+    #if USE_HTML_PARSER_HTMLAGILITYPACK
+    public HtmlAgilityPack.HtmlDocument htmlToHtmlDoc(string html)
+    {
+        HtmlAgilityPack.HtmlDocument htmlDoc = new HtmlAgilityPack.HtmlDocument();
+        htmlDoc.LoadHtml(html);
+
+        return htmlDoc;
+    }
+    #endif
+
+    //example code for html parse
+    void _demoHtmlParse()
+    {
+        #if USE_HTML_PARSER_SGML
+        //Method 1: use  htmlToXmlDoc
+        //(1) with xmlns
+        string withXmlnsUrl = "http://fiverr.com/gigs/search?utf8=%E2%9C%93&query=seo&x=15&y=13&page=2";
+        string withXmlnsHtml = getUrlRespHtml(withXmlnsUrl);
+        XmlDocument xmlDocWithNs = htmlToXmlDoc(withXmlnsHtml);
+        //<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        //<html xmlns:og="http://ogp.me/ns#" xmlns:fb="http://www.facebook.com/2008/fbml" xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en" >
+        //  <head>
+        //      ...
+        XmlNamespaceManager m = new XmlNamespaceManager(xmlDocWithNs.NameTable);
+        m.AddNamespace("w3org", "http://www.w3.org/1999/xhtml");
+        XmlNode titleNode = xmlDocWithNs.SelectSingleNode("//w3org:h1[@itemprop='name']", m);
+        string title = titleNode.InnerText;
+
+        //(2) without xmlns
+        string withoutXmlnsUrl = "http://www.amazon.com/gp/new-releases/appliances/ref=zg_bsnr_nav_0";
+        //<!DOCTYPE html>
+        //<html>
+        //<head>
+        //...
+        string withoutXmlnsHtml = getUrlRespHtml(withoutXmlnsUrl);
+        XmlDocument xmlDocNoNs = htmlToXmlDoc(withoutXmlnsHtml);
+        XmlNodeList pageNodeList = xmlDocNoNs.SelectNodes("//ol[@class='zg_pagination']/li[@class]");
+        #endif
+
+        //common part
+        //how to use Attributes
+        //XmlNodeList pageNodeList = xmlDoc.SelectNodes("//ol[@class='zg_pagination']/li[@class]");
+        //if (pageNodeList != null)
+        //{
+        //    for (int pageIdx = 1; pageIdx < pageNodeList.Count; pageIdx++)
+        //    {
+        //        XmlNode curPageNode = pageNodeList[pageIdx];
+        //        //<li class="zg_page " id="zg_page2"><a page="2" ajaxUrl="http://www.amazon.com/gp/new-releases/appliances/ref=zg_bsnr_appliances_pg_2/191-0874592-3518518?ie=UTF8&pg=2&ajax=1" href="http://www.amazon.com/gp/new-releases/appliances/ref=zg_bsnr_appliances_pg_2/191-0874592-3518518?ie=UTF8&pg=2">21-40</a></li>
+        //        XmlNode ajaxUrlNode = curPageNode.SelectSingleNode(".//a[@href]");
+        //        string pageUrl = ajaxUrlNode.Attributes["href"].Value;
+        //    }
+        //}
+
+
+        #if USE_HTML_PARSER_HTMLAGILITYPACK
+        //Method 2: use htmlToHtmlDoc
+        string testUrlWithXmlns = "http://sd.csdn.net/";
+        string respHtml = getUrlRespHtml(testUrlWithXmlns);
+
+        //<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+        //<html xmlns="http://www.w3.org/1999/xhtml">
+        //<head>
+        HtmlAgilityPack.HtmlDocument htmlDoc = htmlToHtmlDoc(respHtml);
+        
+        //<div class="tabcontent" id="sc1">
+        //    <ul>
+        //    <li><a href="http://www.csdn.net/article/tag/%E4%BA%A7%E5%93%81" target="_blank">产品</a></li>
+        //    ......
+        //    <li><a href="http://www.csdn.net/article/tag/%E8%AE%BE%E8%AE%A1" target="_blank">设计</a></li>
+        //                        </ul>
+        //</div>
+        //...
+        //<div class="tabcontent" id="sc4">
+        //    <ul>
+        //          ...
+        //    <li><a href="http://www.csdn.net/article/tag/%E6%95%B0%E6%8D%AE%E5%BA%93"  target="_blank">数据库</a></li>
+        //                        </ul>
+        //</div>
+        
+        //here, no need to take care the html xmlns
+        //is better than SGMLReader
+        HtmlNode rootHtmlNode = htmlDoc.DocumentNode;
+        HtmlNodeCollection htmlNodes = rootHtmlNode.SelectNodes("//div[@class='tabcontent']");
+        foreach (HtmlNode link in htmlNodes)
+        {
+            HtmlAttribute att = link.Attributes["id"];
+            string idHref = att.Value;
+        }
+#endif
+    }
+
+
+#if USE_EMBED_DLL_TO_EXE
+    /*********************************************************************/
+    /* Embedded dll into exe related code */
+    /*********************************************************************/
+
+    public yourClassname()
+    {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
+
+        InitializeComponent();
+
+        ...
+    }
+
+    //!!! for load embedded dll: (2) implement this handler
+    System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    {
+        string dllName = args.Name.Contains(",") ? args.Name.Substring(0, args.Name.IndexOf(',')) : args.Name.Replace(".dll", "");
+
+        dllName = dllName.Replace(".", "_");
+
+        if (dllName.EndsWith("_resources")) return null;
+
+        System.Resources.ResourceManager rm = new System.Resources.ResourceManager(GetType().Namespace + ".Properties.Resources", System.Reflection.Assembly.GetExecutingAssembly());
+
+        byte[] bytes = (byte[])rm.GetObject(dllName);
+
+        return System.Reflection.Assembly.Load(bytes);
+    }
+#endif
+
+#if USE_DATAGRIDVIEW
+    /*********************************************************************/
+    /* DataGridView */
+    /*********************************************************************/
+
+    public void dgvClearContent(DataGridView dgvValue)
+    {
+        dgvValue.Rows.Clear();
+    }
+
+    //draw the row index
+    public void dgvDrawHeaderNum(DataGridView dgvValue)
+    {
+        for (int index = 0; (index <= (dgvValue.Rows.Count - 1)); index++)
+        {
+            int number = index + 1;
+            dgvValue.Rows[index].HeaderCell.Value = String.Format("{0}", number);
+        }
+    }
+    
+    private void releaseObject(object obj)
+    {
+        try
+        {
+            System.Runtime.InteropServices.Marshal.ReleaseComObject(obj);
+            obj = null;
+        }
+        catch (Exception ex)
+        {
+            obj = null;
+            MessageBox.Show("Exception Occured while releasing object " + ex.ToString());
+        }
+        finally
+        {
+            GC.Collect();
+        }
+    }
+    
+
+    public void dgvExportToExcel(  DataGridView dgvValue,
+                                            string excelFullFilename,
+                                            bool isAutoFit = true,
+                                            bool isHeaderBold = true,
+                                            List<int> omitRowIdxList = null,
+                                            List<int> omitColumnIdxList = null)
+    {
+        Excel.Application xlApp = new Excel.Application();
+        Excel.Workbook xlWorkBook;
+        Excel.Worksheet xlWorkSheet;
+                
+        object misValue = System.Reflection.Missing.Value;
+        xlApp = new Excel.ApplicationClass();
+        xlWorkBook = xlApp.Workbooks.Add(misValue);
+        xlWorkSheet = (Excel.Worksheet)xlWorkBook.Worksheets.get_Item(1);
+
+        int rowIdx = 0, realRowIdx = 0;
+        int columnIdx = 0, realColumnIdx = 0;
+        const int excelRowHeader = 1;
+        const int excelColumnHeader = 1;
+
+        //save header
+        for (columnIdx = 0, realColumnIdx = 0; columnIdx <= dgvValue.ColumnCount - 1; columnIdx++)
+        {
+            
+            if ((omitColumnIdxList != null) && omitColumnIdxList.Contains(columnIdx))
+            {
+                //omit this column
+            }
+            else
+            {
+                //excelRowHeader and excelColumnHeader -> jump over the excel buildin row and column
+                xlWorkSheet.Cells[0 + excelRowHeader, realColumnIdx + excelColumnHeader] = dgvValue.Columns[columnIdx].HeaderText;
+
+                realColumnIdx++;
+            }
+        }
+        
+        const int excelTitleRow = 1;
+        //save cells
+        for (rowIdx = 0, realRowIdx= 0; rowIdx <= dgvValue.RowCount - 1; rowIdx++)
+        {
+            if ((omitRowIdxList != null) && omitRowIdxList.Contains(rowIdx))
+            {
+                //omit this row
+            }
+            else
+            {
+                for (columnIdx = 0, realColumnIdx = 0; columnIdx <= dgvValue.ColumnCount - 1; columnIdx++)
+                {
+                    if ((omitColumnIdxList != null) && omitColumnIdxList.Contains(columnIdx))
+                    {
+                        //omit this column
+                    }
+                    else
+                    {
+                        //note here use [columnIdx, rowIdx], not [rowIdx, columnIdx]
+                        DataGridViewCell curCell = dgvValue[columnIdx, rowIdx];
+                        xlWorkSheet.Cells[(realRowIdx + excelTitleRow) + excelRowHeader, realColumnIdx + excelColumnHeader] = curCell.Value;
+
+                        realColumnIdx++;
+                    }
+                }
+
+                realRowIdx++;
+            }
+        }
+
+        //formatting
+        //(1) header to bold
+        if (isHeaderBold)
+        {
+            Range headerRow = xlWorkSheet.get_Range("1:1", System.Type.Missing);
+            headerRow.Font.Bold = true;
+        }
+        //(2) auto adjust column width (according to content)
+        if (isAutoFit)
+        {
+            Range allColumn = xlWorkSheet.Columns;
+            allColumn.AutoFit();
+        }
+
+        //output
+        xlWorkBook.SaveAs(  excelFullFilename,
+                            XlFileFormat.xlWorkbookNormal,
+                            misValue,
+                            misValue, 
+                            misValue, 
+                            misValue, 
+                            XlSaveAsAccessMode.xlExclusive,
+                            XlSaveConflictResolution.xlLocalSessionChanges,
+                            misValue, 
+                            misValue, 
+                            misValue, 
+                            misValue);
+        xlWorkBook.Close(true, misValue, misValue);
+        xlApp.Quit();
+
+        releaseObject(xlWorkSheet);
+        releaseObject(xlWorkBook);
+        releaseObject(xlApp);
+    }
+
+    public void dgvExportToCsv(DataGridView dgvValue,
+                                        string csvFullFilename,
+                                        string delimiter = ",",
+                                        List<int> omitRowIdxList = null,
+                                        List<int> omitColumnIdxList = null)
+    {
+        StreamWriter csvStreamWriter = new StreamWriter(csvFullFilename, false, System.Text.Encoding.UTF8);
+
+        int rowIdx = 0, realRowIdx = 0;
+        int columnIdx = 0, realColumnIdx = 0;
+
+        //output header data
+        string headerRowStr = "";
+        for (columnIdx = 0, realColumnIdx = 0; columnIdx <= dgvValue.ColumnCount - 1; columnIdx++)
+        {
+            if ((omitColumnIdxList != null) && omitColumnIdxList.Contains(columnIdx))
+            {
+                //omit this column
+            }
+            else
+            {
+                headerRowStr += dgvValue.Columns[columnIdx].HeaderText + delimiter;
+
+                realColumnIdx++;
+            }
+        }
+        csvStreamWriter.WriteLine(headerRowStr);
+
+        //output rows data
+        for (rowIdx = 0, realRowIdx = 0; rowIdx <= dgvValue.RowCount - 1; rowIdx++)
+        {
+            if ((omitRowIdxList != null) && omitRowIdxList.Contains(rowIdx))
+            {
+                //omit this row
+            }
+            else
+            {
+                string eachRowStr = "";
+                for (columnIdx = 0, realColumnIdx = 0; columnIdx <= dgvValue.ColumnCount - 1; columnIdx++)
+                {
+                    if ((omitColumnIdxList != null) && omitColumnIdxList.Contains(columnIdx))
+                    {
+                        //omit this column
+                    }
+                    else
+                    {
+                        //eachRowStr += dgvValue.Rows[rowIdx].Cells[columnIdx].Value + delimiter;
+                        eachRowStr += dgvValue[columnIdx, rowIdx].Value + delimiter;
+                        
+                        realColumnIdx++;
+                    }
+                }
+                csvStreamWriter.WriteLine(eachRowStr);
+
+                realRowIdx++;
+            }
+        }
+
+        csvStreamWriter.Close();        
+    }
+#endif
+
 }
