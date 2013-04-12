@@ -6,15 +6,13 @@
  * This library file contains many common functions, implemented in C#, created by crifan.
  * 
  * [Note]
- * 1.before use htmlToXmlDoc, you must add reference for SgmlReader lib: SgmlReaderDll.dll, and uncomment the related code.
- * 2.before use htmlToHtmlDoc, you must add reference for HtmlAgilityPack lib: HtmlAgilityPack.dll, and uncomment the related code.
- * 3.copy out embed dll into exe related code into your project for use
+ * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v4.2
+ * v4.5
  * 
  * [update]
- * 2013-04-09
+ * 2013-04-12
  * 
  * [Author]
  * Crifan
@@ -24,10 +22,15 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v4.5]
+ * 1. add json related code
+ * 2. add more check method for getDomainAlexaRank, getDomainPageRank
+ * 3. update for dgvExportToExcel, dgvExportToCsv to support tag value
+ * 
  * [v4.2]
  * 1. add htmlToXmlDoc, htmlToHtmlDoc, and related demo code
  * 2. add embeded dll into exe related code: init code and CurrentDomain_AssemblyResolve
- * 3. add dgvDrawHeaderNum, dgvClearContent, dgvExportToExcel, dgvExportToCsv,         
+ * 3. add dgvDrawHeaderNum, dgvClearContent, dgvExportToExcel, dgvExportToCsv
  * 4. add openFolderAndSelectFile
  * 
  * [v3.4]
@@ -57,8 +60,8 @@
 
 
 //comment out following macros if not use them
-#define USE_HTML_PARSER_SGML
-#define USE_HTML_PARSER_HTMLAGILITYPACK
+#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
+#define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
 #define USE_DATAGRIDVIEW
 
 
@@ -75,6 +78,7 @@ using System.Windows.Forms;
 using System.Reflection;
 using System.Diagnostics;
 using System.ComponentModel;
+using System.Globalization;
 
 #if USE_HTML_PARSER_SGML
 using Sgml;
@@ -125,6 +129,9 @@ public class crifanLib
 
     public crifanLib()
     {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
+
         //http related
         //set max enough to avoid http request is used out -> avoid dead while get response 
         System.Net.ServicePointManager.DefaultConnectionLimit = 200;
@@ -144,6 +151,22 @@ public class crifanLib
     }
 
     /*------------------------Private Functions------------------------------*/
+
+    //!!! for load embedded dll: (2) implement this handler
+    System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    {
+        string dllName = args.Name.Contains(",") ? args.Name.Substring(0, args.Name.IndexOf(',')) : args.Name.Replace(".dll", "");
+
+        dllName = dllName.Replace(".", "_");
+
+        if (dllName.EndsWith("_resources")) return null;
+
+        System.Resources.ResourceManager rm = new System.Resources.ResourceManager(GetType().Namespace + ".Properties.Resources", System.Reflection.Assembly.GetExecutingAssembly());
+
+        byte[] bytes = (byte[])rm.GetObject(dllName);
+
+        return System.Reflection.Assembly.Load(bytes);
+    }
 
     // replace the replacedChar back to original ','
     private string _recoverExpireField(Match foundPprocessedExpire)
@@ -305,6 +328,30 @@ public class crifanLib
         }
 
         return validFileOrPathStr;
+    }
+
+    //replace "0A" (in \x0A) into '\n'
+    private string _replaceEscapeSequenceToChar(Match foundEscapeSequence)
+    {
+        char[] hexValues = new char[2];
+        //string hexChars = foundEscapeSequence.Value.ToString();
+        string matchedEscape = foundEscapeSequence.ToString();
+        hexValues[0] = matchedEscape[2];
+        hexValues[1] = matchedEscape[3];
+        string hexValueString = new string(hexValues);
+        int convertedInt = int.Parse(hexValueString, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo);
+        char hexChar = Convert.ToChar(convertedInt);
+        string hexStr = hexChar.ToString();
+        return hexStr;
+    }
+
+    //convert \xXX into corresponding char
+    //eg: \x0A -> '\n'
+    public string filterEscapeSequence(string esacapeSequenceStr)
+    {
+        string filteredStr = Regex.Replace(esacapeSequenceStr, @"\\x\w{2}", new MatchEvaluator(_replaceEscapeSequenceToChar));
+
+        return filteredStr;
     }
 
     /*********************************************************************/
@@ -1748,57 +1795,95 @@ public class crifanLib
     public int getDomainPageRank(string domainUrl)
     {
         int pageRank = 0;
-
-        ////Method 1: use http://pagerank.webmasterhome.cn/
-        //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
-
-        ////http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
-
-        //string tmpRespHtml = "";
-        //Dictionary<string, string> headerDict;
-        ////(1)to get cookies
-        //string pageRankMainUrl = "http://pagerank.webmasterhome.cn/";
-        //tmpRespHtml = getUrlRespHtml(pageRankMainUrl);
-        ////(2)ask page rank
-        //string firstBaseUrl = "http://pagerank.webmasterhome.cn/?domain=";
-        ////http://pagerank.webmasterhome.cn/?domain=answers.yahoo.com
-        //string firstWholeUrl = firstBaseUrl + noHttpPreDomainUrl;
-        //headerDict = new Dictionary<string, string>();
-        //headerDict.Add("referer", pageRankMainUrl); 
-        //tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict);
-
-        //string baseUrl = "http://pagerank.webmasterhome.cn/prLoading.asp?domain=";
-        ////http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
-        //string queryUrl = baseUrl + noHttpPreDomainUrl;
-        //headerDict = new Dictionary<string, string>();
-        //headerDict.Add("referer", firstWholeUrl);
-        //string respHtml = getUrlRespHtml(queryUrl, headerDict);
-
-        ////'<img src=\"http://primg.webmasterhome.cn/pr7.gif\" style=\"width:40px;height:5px;border:0px;\" alt=PageRank align=absmiddle> (7/10)'
-        //string rankStr = "";
-        //if (extractSingleStr(@"\((\d+)/10\)", respHtml, out rankStr))
-        //{
-        //    pageRank = Int32.Parse(rankStr);
-        //}
-        
-
-        //Method 2: use http://moonsy.com/pagerank_checker/
-
-        //(1) http://moonsy.com/pagerank_checker/
-        string queryUrl = "http://moonsy.com/pagerank_checker/";
-        Dictionary<string, string> postDict = new Dictionary<string, string>();
-        postDict.Add("domain", domainUrl);
-        postDict.Add("Submit", "CHECK");
-
-        string respHtml = getUrlRespHtml(queryUrl, null, postDict);
-
-        //<h3>Your Page Rank: 7/10
+        string queryUrl = "";
+        string respHtml = "";
+        Dictionary<string, string> postDict = new Dictionary<string,string>();
         string rankStr = "";
-        if (extractSingleStr(@"<h3>Your Page Rank.+?(\d+)/10", respHtml, out rankStr))
+        bool prevMethodFail = true;
+
+        if ((pageRank == 0) && prevMethodFail)
         {
-            pageRank = Int32.Parse(rankStr);
+            //Method 1: use http://www.pagerankme.com/
+            queryUrl = "http://www.pagerankme.com/";
+            postDict = new Dictionary<string, string>();
+            postDict.Add("url", domainUrl);
+            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+            //<a href="http://www.pagerankme.com" target="_blank" style="text-decoration:none;color:#000000;">PageRank 7</a>
+            rankStr = "";
+            if (extractSingleStr(@"<a href=""http://www\.pagerankme\.com"" target=""_blank"" style="".+?"">PageRank (\d+)</a>", respHtml, out rankStr))
+            {
+                pageRank = Int32.Parse(rankStr);
+                prevMethodFail = false;
+            }
+            else
+            {
+                prevMethodFail = true;
+            }
         }
 
+        if ((pageRank == 0) && prevMethodFail)
+        {
+            //Method 2: use http://moonsy.com/pagerank_checker/
+            //(1) http://moonsy.com/pagerank_checker/
+            queryUrl = "http://moonsy.com/pagerank_checker/";
+            postDict = new Dictionary<string, string>();
+            postDict.Add("domain", domainUrl);
+            postDict.Add("Submit", "CHECK");
+
+            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+
+            //<h3>Your Page Rank: 7/10
+            rankStr = "";
+            if (extractSingleStr(@"<h3>Your Page Rank.+?(\d+)/10", respHtml, out rankStr))
+            {
+                pageRank = Int32.Parse(rankStr);
+                prevMethodFail = false;
+            }
+            else
+            {
+                prevMethodFail = true;
+            }
+        }
+
+        if ((pageRank == 0) && prevMethodFail)
+        {
+            //Method 3: use http://pagerank.webmasterhome.cn/
+            string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
+
+            //http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
+
+            string tmpRespHtml = "";
+            Dictionary<string, string> headerDict;
+            //(1)to get cookies
+            string pageRankMainUrl = "http://pagerank.webmasterhome.cn/";
+            tmpRespHtml = getUrlRespHtml(pageRankMainUrl);
+            //(2)ask page rank
+            string firstBaseUrl = "http://pagerank.webmasterhome.cn/?domain=";
+            //http://pagerank.webmasterhome.cn/?domain=answers.yahoo.com
+            string firstWholeUrl = firstBaseUrl + noHttpPreDomainUrl;
+            headerDict = new Dictionary<string, string>();
+            headerDict.Add("referer", pageRankMainUrl);
+            tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict);
+
+            string baseUrl = "http://pagerank.webmasterhome.cn/prLoading.asp?domain=";
+            //http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
+            queryUrl = baseUrl + noHttpPreDomainUrl;
+            headerDict = new Dictionary<string, string>();
+            headerDict.Add("referer", firstWholeUrl);
+            respHtml = getUrlRespHtml(queryUrl, headerDict);
+
+            //'<img src=\"http://primg.webmasterhome.cn/pr7.gif\" style=\"width:40px;height:5px;border:0px;\" alt=PageRank align=absmiddle> (7/10)'
+            rankStr = "";
+            if (extractSingleStr(@"\((\d+)/10\)", respHtml, out rankStr))
+            {
+                pageRank = Int32.Parse(rankStr);
+                prevMethodFail = false;
+            }
+            else
+            {
+                prevMethodFail = true;
+            }
+        }
 
         return pageRank;
     }
@@ -1809,68 +1894,89 @@ public class crifanLib
     public int getDomainAlexaRank(string domainUrl)
     {
         int alexaRank = 0;
+        string queryUrl = "";
+        string respHtml = "";
+        Dictionary<string, string> postDict = new Dictionary<string, string>();
+        string alexaRankStr = "";
+        bool prevMethodFail = true;
 
         //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
-
-        ////Method 1: use http://moonsy.com/alexa_rank/
-
-        ////(1) http://moonsy.com/alexa_rank/
-        //string queryUrl = "http://moonsy.com/alexa_rank/";
-        //Dictionary<string, string> postDict = new Dictionary<string, string>();
-        ////postDict.Add("domain", noHttpPreDomainUrl);
-        //postDict.Add("domain", domainUrl);
-        //postDict.Add("Submit", "CHECK");
-
-        //string respHtml = getUrlRespHtml(queryUrl, null, postDict);
-
-        ////<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
-        //string alexaRankStr = "";
-        //if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
-        //{
-        //    alexaRank = Int32.Parse(alexaRankStr);
-        //}
-
-
-        //Method 2: use http://www.alexa.com/
-        string tmpUrl = "http://www.alexa.com";
-        //to get cookies
-        string tmpRespHtml = getUrlRespHtml(tmpUrl);
-        //then do work
-        string queryUrl = "http://www.alexa.com/search";
-        //http://www.alexa.com/search?q=crifan.com&r=home_home&p=bigtop
-        queryUrl += "?q=" + domainUrl;
-        queryUrl += "&r=" + "home_home";
-        queryUrl += "&p=" + "bigtop";
-
-        string respHtml = getUrlRespHtml(queryUrl);
-
-        HtmlAgilityPack.HtmlDocument htmlDoc = htmlToHtmlDoc(respHtml);
-        HtmlNode rootHtmlNode = htmlDoc.DocumentNode;
-
-        //<span>
-        //<img class="align-top" src="/images/icons/globe-sm.gif" />
-        //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
-        //<a href="/siteinfo/yahoo.com#trafficstats">
-        //4</a>
-        //</span>
-
-        //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
-        //<a href="/siteinfo/crifan.com#trafficstats">
-        //170,557</a>
-        //</span>
-        //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a[@href]");
-        //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a]");
-        //HtmlNodeCollection trafficHtmlNodes = rootHtmlNode.SelectNodes("//span/span[@class='traffic-stat-label']");
-        HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']");
-        if (trafficHtmlNode.InnerText.StartsWith("Alexa Traffic Rank:"))
+        
+        #if USE_HTML_PARSER_HTMLAGILITYPACK
+        if ((alexaRank == 0) && prevMethodFail)
         {
-            HtmlNode parentHtmlNode = trafficHtmlNode.ParentNode;
-            HtmlNode aHrefNode = parentHtmlNode.SelectSingleNode(".//a[@href]");
-            string tracfficNumberStr = aHrefNode.InnerText;
-            tracfficNumberStr = tracfficNumberStr.Trim().Replace(",", "");
-            alexaRank = Int32.Parse(tracfficNumberStr);
-        }
+            //Method 1: use http://www.alexa.com/
+            string tmpUrl = "http://www.alexa.com";
+            //to get cookies
+            string tmpRespHtml = getUrlRespHtml(tmpUrl);
+            //then do work
+            queryUrl = "http://www.alexa.com/search";
+            //http://www.alexa.com/search?q=crifan.com&r=home_home&p=bigtop
+            queryUrl += "?q=" + domainUrl;
+            queryUrl += "&r=" + "home_home";
+            queryUrl += "&p=" + "bigtop";
+            respHtml = getUrlRespHtml(queryUrl);
 
+            HtmlAgilityPack.HtmlDocument htmlDoc = htmlToHtmlDoc(respHtml);
+            HtmlNode rootHtmlNode = htmlDoc.DocumentNode;
+
+            //<span>
+            //<img class="align-top" src="/images/icons/globe-sm.gif" />
+            //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
+            //<a href="/siteinfo/yahoo.com#trafficstats">
+            //4</a>
+            //</span>
+
+            //<span class="traffic-stat-label">Alexa Traffic Rank:</span>
+            //<a href="/siteinfo/crifan.com#trafficstats">
+            //170,557</a>
+            //</span>
+            //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a[@href]");
+            //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a]");
+            //HtmlNodeCollection trafficHtmlNodes = rootHtmlNode.SelectNodes("//span/span[@class='traffic-stat-label']");
+            HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']");
+            if (trafficHtmlNode.InnerText.StartsWith("Alexa Traffic Rank:"))
+            {
+                HtmlNode parentHtmlNode = trafficHtmlNode.ParentNode;
+                HtmlNode aHrefNode = parentHtmlNode.SelectSingleNode(".//a[@href]");
+                string tracfficNumberStr = aHrefNode.InnerText;
+                alexaRankStr = tracfficNumberStr.Trim().Replace(",", "");
+                alexaRank = Int32.Parse(alexaRankStr);
+
+                prevMethodFail = false;
+            }
+            else
+            {
+                prevMethodFail = true;
+            }
+        }
+        #endif
+
+        //Method 2: use http://moonsy.com/alexa_rank/
+        if ((alexaRank == 0) && prevMethodFail)
+        {
+            //(1) http://moonsy.com/alexa_rank/
+            queryUrl = "http://moonsy.com/alexa_rank/";
+            postDict = new Dictionary<string, string>();
+            //postDict.Add("domain", noHttpPreDomainUrl);
+            postDict.Add("domain", domainUrl);
+            postDict.Add("Submit", "CHECK");
+
+            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+
+            //<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
+            alexaRankStr = "";
+            if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
+            {
+                alexaRank = Int32.Parse(alexaRankStr);
+                prevMethodFail = false;
+            }
+            else
+            {
+                prevMethodFail = true;
+            }
+        }
+        
         return alexaRank;
     }
 
@@ -2211,7 +2317,7 @@ public class crifanLib
         }
     }
     
-    private void releaseObject(object obj)
+    private void _releaseObject(object obj)
     {
         try
         {
@@ -2229,13 +2335,13 @@ public class crifanLib
         }
     }
     
-
     public void dgvExportToExcel(  DataGridView dgvValue,
                                             string excelFullFilename,
                                             bool isAutoFit = true,
                                             bool isHeaderBold = true,
                                             List<int> omitRowIdxList = null,
-                                            List<int> omitColumnIdxList = null)
+                                            List<int> omitColumnIdxList = null,
+                                            List<int> useTagColumnIdxList = null)
     {
         Excel.Application xlApp = new Excel.Application();
         Excel.Workbook xlWorkBook;
@@ -2288,7 +2394,14 @@ public class crifanLib
                     {
                         //note here use [columnIdx, rowIdx], not [rowIdx, columnIdx]
                         DataGridViewCell curCell = dgvValue[columnIdx, rowIdx];
-                        xlWorkSheet.Cells[(realRowIdx + excelTitleRow) + excelRowHeader, realColumnIdx + excelColumnHeader] = curCell.Value;
+                        if ((useTagColumnIdxList != null) && useTagColumnIdxList.Contains(columnIdx))
+                        {
+                            xlWorkSheet.Cells[(realRowIdx + excelTitleRow) + excelRowHeader, realColumnIdx + excelColumnHeader] = curCell.Tag;
+                        }
+                        else
+                        {
+                            xlWorkSheet.Cells[(realRowIdx + excelTitleRow) + excelRowHeader, realColumnIdx + excelColumnHeader] = curCell.Value;
+                        }
 
                         realColumnIdx++;
                     }
@@ -2328,16 +2441,17 @@ public class crifanLib
         xlWorkBook.Close(true, misValue, misValue);
         xlApp.Quit();
 
-        releaseObject(xlWorkSheet);
-        releaseObject(xlWorkBook);
-        releaseObject(xlApp);
+        _releaseObject(xlWorkSheet);
+        _releaseObject(xlWorkBook);
+        _releaseObject(xlApp);
     }
 
     public void dgvExportToCsv(DataGridView dgvValue,
                                         string csvFullFilename,
                                         string delimiter = ",",
                                         List<int> omitRowIdxList = null,
-                                        List<int> omitColumnIdxList = null)
+                                        List<int> omitColumnIdxList = null,
+                                        List<int> useTagColumnIdxList = null)
     {
         StreamWriter csvStreamWriter = new StreamWriter(csvFullFilename, false, System.Text.Encoding.UTF8);
 
@@ -2379,8 +2493,15 @@ public class crifanLib
                     }
                     else
                     {
-                        //eachRowStr += dgvValue.Rows[rowIdx].Cells[columnIdx].Value + delimiter;
-                        eachRowStr += dgvValue[columnIdx, rowIdx].Value + delimiter;
+                        DataGridViewCell curCell = dgvValue[columnIdx, rowIdx];//dgvValue.Rows[rowIdx].Cells[columnIdx]
+                        if ((useTagColumnIdxList != null) && useTagColumnIdxList.Contains(columnIdx))
+                        {
+                            eachRowStr += curCell.Tag + delimiter;
+                        }
+                        else
+                        {
+                            eachRowStr += curCell.Value + delimiter;
+                        }
                         
                         realColumnIdx++;
                     }
@@ -2395,4 +2516,49 @@ public class crifanLib
     }
 #endif
 
+    /*********************************************************************/
+    /* JSON */
+    /*********************************************************************/
+    //void testJson()
+    //{
+    //    // to deserialize a string to an object
+    //    //string filteredJsonText = jsonText.Replace("'", "\"");
+    //    //var newobj = fastJSON.JSON.Instance.ToObject(filteredJsonText);
+
+    //    //            string simpleJsonText = @"{
+    //    //'query': 'weight loss',
+    //    //'frequency': '3',
+    //    //'has_recent_results': 1,
+    //    //'results': [
+    //    //{
+    //    //'input': 'NEWS',
+    //    //'html': 'xxxxx'
+    //    //}
+    //    //,
+    //    //{
+    //    //'input': 'WEB',
+    //    //'html': 'yyyyyy'
+    //    //}
+    //    //]
+    //    //}";
+    //    //            //string noSpaceJsonText = @"{'query':'weight loss','frequency':'3','has_recent_results':1,'results':[{'input':'NEWS','html':'xxxxx'},{'input':'WEB','html':'yyyyyy'}]}";
+    //    //            string noSpaceJsonText = "{'query':'weight loss','frequency':'3','has_recent_results':1,'results':[{'input':'NEWS','html':'xxxxx'},{'input':'WEB','html':'yyyyyy'}]}";
+    //    //            string filteredJsonText = noSpaceJsonText.Replace("'", "\"");
+    //    //            var newobj = fastJSON.JSON.Instance.ToObject(filteredJsonText);
+
+    //    //JsonReader reader = new JsonTextReader(new StringReader(jsonText));
+
+    //    //while (reader.Read())
+    //    //{
+    //    //    Console.WriteLine(reader.TokenType + "\t\t" + reader.ValueType + "\t\t" + reader.Value);
+    //    //}
+
+    //    //string filteredJsonText = jsonText.Replace("'", "\"");
+
+    //    //string htmlDecodedJson = HttpUtility.HtmlDecode(jsonText); // only decode html entity, NOT decode escape sting: \x0A
+    //    ////string htmlDecodedJson = System.Net.WebUtility.HtmlDecode(jsonText); // need .NET 4.0
+    //    //string filteredJson = filterEscapeSequence(htmlDecodedJson);
+    //    //JavaScriptSerializer serializer = new JavaScriptSerializer();
+    //    //searchResultJson collection = serializer.Deserialize<searchResultJson>(filteredJson);
+    //}
 }
