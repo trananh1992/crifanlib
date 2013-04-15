@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v3.8]
+1. add getUrlResponse to support postDataDelimiter.
+
 [v3.7]
 1. fixbug -> add user-agent for isFileValid
 
@@ -948,7 +951,7 @@ def manuallyDownloadFile(fileUrl, fileToSave, headerDict=""):
     return isDownOK;
 
 #------------------------------------------------------------------------------
-def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
+def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False, postDataDelimiter="&") :
     """Get response from url, support optional postDict,headerDict,timeout,useGzip
 
     Note:
@@ -961,8 +964,16 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
     url = str(url);
 
     if (postDict) :
-        postData = urllib.urlencode(postDict);
+        if(postDataDelimiter=="&"):
+            postData = urllib.urlencode(postDict);
+        else:
+            postData = "";
+            for eachKey in postDict.keys() :
+                postData += str(eachKey) + "="  + str(postDict[eachKey]) + postDataDelimiter;
+        postData = postData.strip();
+        logging.info("postData=%s", postData);
         req = urllib2.Request(url, postData);
+        logging.info("req=%s", req);
         req.add_header('Content-Type', "application/x-www-form-urlencoded");
     else :
         req = urllib2.Request(url);
@@ -971,7 +982,9 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
         #print "added header:",headerDict;
         for key in headerDict.keys() :
             req.add_header(key, headerDict[key]);
-
+    
+    logging.info("can overwrite header? req=%s", req);
+    
     defHeaderDict = {
         'User-Agent'    : gConst['UserAgent'],
         'Cache-Control' : 'no-cache',
@@ -1000,17 +1013,20 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
     else :
         resp = urllib2.urlopen(req);
     
+    logging.info("resp=%s", resp);
+    
     #update cookies into local file
     if(gVal['cookieUseFile']):
         gVal['cj'].save();
+        logging.info("gVal['cj']=%s", gVal['cj']);
     
     return resp;
 
 #------------------------------------------------------------------------------
 # get response html==body from url
 #def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=False) :
-def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True) :
-    resp = getUrlResponse(url, postDict, headerDict, timeout, useGzip);
+def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True, postDataDelimiter="&") :
+    resp = getUrlResponse(url, postDict, headerDict, timeout, useGzip, postDataDelimiter);
     respHtml = resp.read();
     if(useGzip) :
         #print "---before unzip, len(respHtml)=",len(respHtml);
