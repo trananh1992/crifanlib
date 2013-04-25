@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v4.5
+ * v4.8
  * 
  * [update]
- * 2013-04-12
+ * 2013-04-25
  * 
  * [Author]
  * Crifan
@@ -22,6 +22,11 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v4.8]
+ * 1. update quoteParas to support space to %20
+ * 2. add getSaveFolder
+ * 3. add new method for getDomainAlexaRank
+ * 
  * [v4.5]
  * 1. add json related code
  * 2. add more check method for getDomainAlexaRank, getDomainPageRank
@@ -60,7 +65,7 @@
 
 
 //comment out following macros if not use them
-#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
+//#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
 #define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
 #define USE_DATAGRIDVIEW
 
@@ -279,7 +284,7 @@ public class crifanLib
 
     //quote the input dict values
     //note: the return result for first para no '&'
-    public string quoteParas(Dictionary<string, string> paras)
+    public string quoteParas(Dictionary<string, string> paras, bool spaceToPercent20 = true)
     {
         string quotedParas = "";
         bool isFirst = true;
@@ -288,14 +293,27 @@ public class crifanLib
         {
             if (paras.TryGetValue(para, out val))
             {
-                if (isFirst)
+                string encodedVal = "";
+                if (spaceToPercent20)
                 {
-                    isFirst = false;
-                    quotedParas += para + "=" + HttpUtility.UrlPathEncode(val);
+                    //encodedVal = HttpUtility.UrlPathEncode(val);
+                    //encodedVal = Uri.EscapeDataString(val);
+                    //encodedVal = Uri.EscapeUriString(val);
+                    encodedVal = HttpUtility.UrlEncode(val).Replace("+", "%20");
                 }
                 else
                 {
-                    quotedParas += "&" + para + "=" + HttpUtility.UrlPathEncode(val);
+                    encodedVal = HttpUtility.UrlEncode(val); //space to +
+                }
+
+                if (isFirst)
+                {
+                    isFirst = false;
+                    quotedParas += para + "=" + encodedVal;
+                }
+                else
+                {
+                    quotedParas += "&" + para + "=" + encodedVal;
                 }
             }
             else
@@ -1189,7 +1207,7 @@ public class crifanLib
         //req.Headers["Accept-Language"] = gAcceptLanguage;
 
         req.KeepAlive = true;
-
+        
         //IE8
         const string gUserAgent = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E";
         //IE9
@@ -1885,6 +1903,12 @@ public class crifanLib
             }
         }
 
+        //TODO:
+        //Google PR (PageRank) Checker
+        //http://www.searchbliss.com/seo-tools/google-pagerank-checker.php
+        //tmp is "We're sorry, the Google PR check is currently being repaired."
+        //future: if Ok, mayby can use it
+
         return pageRank;
     }
 
@@ -1901,11 +1925,47 @@ public class crifanLib
         bool prevMethodFail = true;
 
         //string noHttpPreDomainUrl = Regex.Replace(domainUrl, "((https)|(http)|(ftp))://", "");
+                
+        if ((alexaRank == 0) && prevMethodFail)
+        {
+            //Method 1: use http://www.searchbliss.com/rank.asp
+            string mainUrl = "http://www.searchbliss.com/rank.asp";
+            respHtml = getUrlRespHtml(mainUrl);
+            //<input type="hidden" name="RAC" value="EIS">
+            string accessCode = "";
+            if (extractSingleStr(@"<input\s+type=""hidden""\s+name=""RAC""\s+value=""([A-Z]+)"">", respHtml, out accessCode))
+            {
+                queryUrl = "http://www.searchbliss.com/rank.asp";
+                //AC	EIS
+                //RAC	EIS
+                //rank	http://hubpages.com
+                postDict = new Dictionary<string, string>();
+                //postDict.Add("domain", noHttpPreDomainUrl);
+                postDict.Add("AC", accessCode);
+                postDict.Add("RAC", accessCode);
+                postDict.Add("rank", domainUrl);
+                respHtml = getUrlRespHtml(queryUrl, null, postDict);
+                //<a href="http://www.alexa.com/data/details/main/http://hubpages.com" target="_blank">444</a>
+                if (extractSingleStr(@"<a\s+href=""http://www\.alexa\.com/data/details/main/.+?""\s+target=""_blank"">(\d+)</a>", respHtml, out alexaRankStr))
+                {
+                    alexaRank = Int32.Parse(alexaRankStr);
+                    prevMethodFail = false;
+                }
+                else
+                {
+                    prevMethodFail = true;
+                }
+            }
+            else 
+            {
+                prevMethodFail = true;
+            }
+        }
         
         #if USE_HTML_PARSER_HTMLAGILITYPACK
         if ((alexaRank == 0) && prevMethodFail)
         {
-            //Method 1: use http://www.alexa.com/
+            //Method 2: use http://www.alexa.com/
             string tmpUrl = "http://www.alexa.com";
             //to get cookies
             string tmpRespHtml = getUrlRespHtml(tmpUrl);
@@ -1951,10 +2011,11 @@ public class crifanLib
             }
         }
         #endif
-
-        //Method 2: use http://moonsy.com/alexa_rank/
+        
         if ((alexaRank == 0) && prevMethodFail)
         {
+            //Method 3: use http://moonsy.com/alexa_rank/
+
             //(1) http://moonsy.com/alexa_rank/
             queryUrl = "http://moonsy.com/alexa_rank/";
             postDict = new Dictionary<string, string>();
@@ -1976,6 +2037,10 @@ public class crifanLib
                 prevMethodFail = true;
             }
         }
+
+        //TODO:
+        //maybe future can use:
+        //http://www.dakola.com/tools/alexa/
         
         return alexaRank;
     }
@@ -2515,7 +2580,28 @@ public class crifanLib
         csvStreamWriter.Close();        
     }
 #endif
+    
+    /*********************************************************************/
+    /* File/Folder */
+    /*********************************************************************/
+    public string getSaveFolder(FolderBrowserDialog fbdSave)
+    {
+        string saveFolderPath = "";
+        //string saveFolderPath = System.Environment.CurrentDirectory;
+        //fbdSaveFolder.SelectedPath = System.Environment.CurrentDirectory;
+        DialogResult saveFolderResult = fbdSave.ShowDialog();
+        if (saveFolderResult == System.Windows.Forms.DialogResult.OK)
+        {
+            saveFolderPath = fbdSave.SelectedPath;
+        }
+        else if (saveFolderResult == System.Windows.Forms.DialogResult.Cancel)
+        {
+            saveFolderPath = "";
+        }
 
+        return saveFolderPath;
+    }
+    
     /*********************************************************************/
     /* JSON */
     /*********************************************************************/
