@@ -17,6 +17,15 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v4.3]
+1. add getUrlRespHtml_multiTry
+2. updated formatString
+3. updated decodeHtmlEntity
+
+[v4.0]
+1. fixbug of add header in getUrlResponse
+2. add getZipcodeFromLocation
+
 [v3.8]
 1. add getUrlResponse to support postDataDelimiter.
 
@@ -109,7 +118,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v3.6";
+__VERSION__ = "v4.0";
 
 gConst = {
     'UserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -277,7 +286,21 @@ def decodeHtmlEntity(origHtml, decodedEncoding=""):
     #logging.debug("htmlentitydefs.codepoint2name=%s", htmlentitydefs.codepoint2name);
 
     #http://fredericiana.com/2010/10/08/decoding-html-entities-to-text-in-python/
-    decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', lambda matched: unichr(htmlentitydefs.name2codepoint[matched.group("entityName")]), origHtml);
+    def _nameToCodepoint(matched):
+        decodedCodepoint = "";
+        entityName = matched.group("entityName");
+        if(entityName in htmlentitydefs.name2codepoint):
+            decodedCodepoint = htmlentitydefs.name2codepoint[entityName];
+        else:
+            #invalid key, just omit it
+            
+            #http://autoexplosion.com/RVs/buy/9882.php
+            #Washer&Dryer;, Awning,
+            decodedCodepoint = entityName;
+        return decodedCodepoint;
+    #decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', lambda matched: unichr(htmlentitydefs.name2codepoint[matched.group("entityName")]), origHtml);
+    decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', _nameToCodepoint, origHtml);
+
     #print "type(decodedEntityName)=",type(decodedEntityName); #type(decodedEntityName)= <type 'unicode'>
     decodedCodepointInt = re.sub('&#(?P<codePointInt>\d{2,5});', lambda matched: unichr(int(matched.group("codePointInt"))), decodedEntityName);
     #print "decodedCodepointInt=",decodedCodepointInt;
@@ -364,9 +387,11 @@ def formatString(inputStr, paddingChar="=", totalWidth=80):
     """
     format string, to replace for:
     print '{0:=^80}'.format("xxx");
+    
+    auto added space before and after input string
     """
     formatting = "{0:" + paddingChar + "^" + str(totalWidth) + "}";
-    return formatting.format(inputStr);
+    return formatting.format(" " + inputStr + " ");
     
 
 def genListStr(listValue, encForUniVal="UTF-8", isRetainLastComma = False, delimiter=","):
@@ -978,13 +1003,6 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False, po
     else :
         req = urllib2.Request(url);
 
-    if(headerDict) :
-        #print "added header:",headerDict;
-        for key in headerDict.keys() :
-            req.add_header(key, headerDict[key]);
-    
-    logging.info("can overwrite header? req=%s", req);
-    
     defHeaderDict = {
         'User-Agent'    : gConst['UserAgent'],
         'Cache-Control' : 'no-cache',
@@ -1012,9 +1030,7 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False, po
         resp = urllib2.urlopen(req, timeout=timeout);
     else :
         resp = urllib2.urlopen(req);
-    
-    logging.info("resp=%s", resp);
-    
+        
     #update cookies into local file
     if(gVal['cookieUseFile']):
         gVal['cj'].save();
@@ -1051,6 +1067,30 @@ def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True, pos
 
     return respHtml;
 
+def getUrlRespHtml_multiTry(url, postDict={}, headerDict={}, timeout=0, useGzip=True, postDataDelimiter="&", maxTryNum=5):
+    """
+        get url response html, multiple try version:
+            if fail, then retry
+    """
+    respHtml = "";
+    
+    # access url
+    # mutile retry, if some (mostly is network) error
+    for tries in range(maxTryNum) :
+        try :
+            respHtml = getUrlRespHtml(url, postDict, headerDict, timeout, useGzip, postDataDelimiter);
+            #logging.debug("Successfully access url %s", url);
+            break # successfully, so break now
+        except :
+            if tries < (maxTryNum - 1) :
+                #logging.warning("Access url %s fail, do %d retry", url, (tries + 1));
+                continue;
+            else : # last try also failed, so exit
+                logging.error("Has tried %d times to access url %s, all failed!", maxTryNum, url);
+                break;
+
+    return respHtml;
+    
 
 ################################################################################
 # Image
@@ -1278,6 +1318,109 @@ def transZhcnToEn(strToTrans) :
         (transOK, translatedStr) = translateString(strToTrans, "zh-CN", "en");
 
     return (transOK, translatedStr);
+
+def getZipcodeFromLocation(locationStr):
+    """
+        get zip code from location string, especially for USA
+        eg: 
+        intput: Tampa, FL
+        output: 33601
+        
+        input: West Palm Beach, FL
+        output: 33401
+    """
+    zipCode = "";
+    gotZipCode = False;
+    
+    if(not gotZipCode):
+        #Method 1: 
+        #http://autoexplosion.com/templates/zip_search.php
+        cityStateList = locationStr.split(",");
+        logging.debug("cityStateList=%s", cityStateList);
+        city = cityStateList[0].strip();
+        state = cityStateList[1].strip();
+        logging.debug("city=%s, state=%s", city, state);
+        #http://autoexplosion.com/templates/zip_search.php?formname=search&city=Tampa&state=FL
+        zipBaseSearchUrl = "http://autoexplosion.com/templates/zip_search.php";
+        paraDict = {
+            'formname'  : "search",
+            'city'      : city,
+            'state'     : state,
+        };
+        #http://autoexplosion.com/templates/zip_search.php?city=San Antonio&state=TX&formname=search
+        encodedPara = urllib.urlencode(paraDict);
+        logging.debug("encodedPara=%s", encodedPara);
+            
+        #zipSearchUrl = genFullUrl(zipBaseSearchUrl, paraDict);
+        zipSearchUrl = zipBaseSearchUrl + "?" + encodedPara;
+        logging.debug("zipSearchUrl=%s", zipSearchUrl);
+        
+        headerDict = {
+            'Referer'   : "http://autoexplosion.com/templates/zip_search.php?formname=search",
+        };
+        zipSearchRespHtml = getUrlRespHtml(zipSearchUrl, headerDict=headerDict);
+        logging.debug("zipSearchRespHtml=%s", zipSearchRespHtml);
+
+        #found the first zip search result
+        # <tr>				<td colspan="2" class="cssTableCellLeft">&nbsp;San Antonio</td>
+                        # <td align="center">TX</td>
+                        # <td colspan="2" align="center" class="cssTableCellRight"><a href="javascript:paste_zip('78201');">78201</a></td>
+                    # </tr>
+        soup = BeautifulSoup(zipSearchRespHtml);
+        foundZipcode = soup.find(name="td", attrs={"class":"cssTableCellRight"});
+        logging.debug("foundZipcode=%s", foundZipcode);
+        if(foundZipcode):
+            zipCode = foundZipcode.a.string; #78201
+            logging.debug("zipCode=%s", zipCode);
+            
+            gotZipCode = True;
+        else:
+            logging.debug("Failed for method 1, from %s", locationStr);
+            gotZipCode = False;
+
+    #Method 2: 
+    #https://tools.usps.com/go/ZipLookupAction_input
+    if(not gotZipCode):
+        #https://tools.usps.com/go/ZipLookupAction.action
+        zipLookupBaseUrl = "https://tools.usps.com/go/ZipLookupAction.action";
+        #post data:
+        #mode=0&tCompany=&tZip=&tAddress=&tApt=&tCity=WEST+PALM+BEACH&sState=FL&tUrbanCode=&zip=
+        paraDict ={
+            'mode'      : "0",
+            'tCompany'  : "",
+            'tZip'      : "",
+            'tAddress'  : "",
+            'tApt'      : "",
+            'tCity'     : city,
+            'sState'    : state,
+            'tUrbanCode':"",
+            "zip"       : "",
+            
+        };
+        encodedPara = urllib.urlencode(paraDict);
+        logging.debug("encodedPara=%s", encodedPara);
+        zipLookupUrl = zipLookupBaseUrl + "?" + encodedPara;
+        logging.debug("zipLookupUrl=%s", zipLookupUrl);
+        
+        headerDict = {
+            'Referer'   : "https://tools.usps.com/go/ZipLookupAction_input",
+        };
+        zipLookupRespHtml = getUrlRespHtml(zipLookupUrl, headerDict=headerDict);
+        #logging.debug("zipLookupRespHtml=%s", zipLookupRespHtml);
+        #<span class="zip" style="">33401</span>
+        soup = BeautifulSoup(zipLookupRespHtml);
+        foundZip = soup.find(name="span", attrs={"class":"zip", "style":""});
+        logging.debug("foundZip=%s", foundZip);
+        if(foundZip):
+            zipCode = foundZip.string; #33401
+            logging.debug("zipCode=%s", zipCode);
+        
+            gotZipCode = True;
+        else:
+            logging.debug("Failed for method 2, from %s", locationStr);
+            gotZipCode = False; 
+
+    return zipCode;
 
 
 ################################################################################
