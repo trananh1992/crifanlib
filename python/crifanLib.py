@@ -17,10 +17,12 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
-[v4.3]
+[v4.5]
 1. add getUrlRespHtml_multiTry
 2. updated formatString
 3. updated decodeHtmlEntity
+4. add filterNonAsciiStr
+5. add filterHtmlTag
 
 [v4.0]
 1. fixbug of add header in getUrlResponse
@@ -118,7 +120,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v4.0";
+__VERSION__ = "v4.4";
 
 gConst = {
     'UserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -286,20 +288,36 @@ def decodeHtmlEntity(origHtml, decodedEncoding=""):
     #logging.debug("htmlentitydefs.codepoint2name=%s", htmlentitydefs.codepoint2name);
 
     #http://fredericiana.com/2010/10/08/decoding-html-entities-to-text-in-python/
+    #http://autoexplosion.com/RVs/buy/9882.php
+    #will error 
+    #not support key : Dryer
+    #when use:
+    #decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', lambda matched: unichr(htmlentitydefs.name2codepoint[matched.group("entityName")]), origHtml);
+
+    #logging.debug("origHtml=%s", origHtml);
     def _nameToCodepoint(matched):
-        decodedCodepoint = "";
+        logging.debug("matched=%s", matched);
+        wholeStr = matched.group(0);
+        logging.debug("wholeStr=%s", wholeStr);
+        decodedUnicodeChar = "";
         entityName = matched.group("entityName");
+        logging.debug("entityName=%s", entityName);
         if(entityName in htmlentitydefs.name2codepoint):
             decodedCodepoint = htmlentitydefs.name2codepoint[entityName];
+            logging.debug("decodedCodepoint=%s", decodedCodepoint);
+            decodedUnicodeChar = unichr(decodedCodepoint);
         else:
             #invalid key, just omit it
             
             #http://autoexplosion.com/RVs/buy/9882.php
+            #&Dryer;
+            #from
             #Washer&Dryer;, Awning,
-            decodedCodepoint = entityName;
-        return decodedCodepoint;
-    #decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', lambda matched: unichr(htmlentitydefs.name2codepoint[matched.group("entityName")]), origHtml);
+            decodedUnicodeChar = wholeStr;
+        logging.debug("decodedUnicodeChar=%s", decodedUnicodeChar);
+        return decodedUnicodeChar;
     decodedEntityName = re.sub('&(?P<entityName>[a-zA-Z]{2,10});', _nameToCodepoint, origHtml);
+    #logging.info("decodedEntityName=%s", decodedEntityName);
 
     #print "type(decodedEntityName)=",type(decodedEntityName); #type(decodedEntityName)= <type 'unicode'>
     decodedCodepointInt = re.sub('&#(?P<codePointInt>\d{2,5});', lambda matched: unichr(int(matched.group("codePointInt"))), decodedEntityName);
@@ -378,7 +396,41 @@ def htmlEntityCodepointToName(htmlWithCodepoint):
     for key in codepointToNameDict.keys() :
         htmlWithEntityName = re.compile(key).sub(codepointToNameDict[key], htmlWithEntityName);
     return htmlWithEntityName;
-    
+
+def filterHtmlTag(origHtml):
+    """
+    filter html tag, but retain its contents
+    eg:
+        Brooklyn, NY 11220<br />
+        Brooklyn, NY 11220
+        
+        <a href="mailto:Bayridgenissan42@yahoo.com">Bayridgenissan42@yahoo.com</a><br />
+        Bayridgenissan42@yahoo.com
+        
+        <a href="javascript:void(0);" onClick="window.open(new Array('http','',':','//','stores.ebay.com','/Bay-Ridge-Nissan-of-New-York?_rdc=1').join(''), '_blank')">stores.ebay.com</a>
+        stores.ebay.com
+        
+        <a href="javascript:void(0);" onClick="window.open(new Array('http','',':','//','www.carfaxonline.com','/cfm/Display_Dealer_Report.cfm?partner=AXX_0&UID=C367031&vin=JH4KB2F61AC001005').join(''), '_blank')">www.carfaxonline.com</a>
+        www.carfaxonline.com        
+    """
+    #logging.info("html tag, origHtml=%s", origHtml);
+    filteredHtml = origHtml;
+
+    #Method 1: auto remove tag use re
+    #remove br
+    filteredHtml = re.sub("<br\s*>", "", filteredHtml, flags=re.I);
+    filteredHtml = re.sub("<br\s*/>", "", filteredHtml, flags=re.I);
+    #logging.info("remove br, filteredHtml=%s", filteredHtml);
+    #remove a
+    filteredHtml = re.sub("<a\s+[^<>]+>(?P<aContent>[^<>]+?)</a>", "\g<aContent>", filteredHtml, flags=re.I);
+    #logging.info("remove a, filteredHtml=%s", filteredHtml);
+    #remove b,strong
+    filteredHtml = re.sub("<b>(?P<bContent>[^<>]+?)</b>", "\g<bContent>", filteredHtml, re.I);
+    filteredHtml = re.sub("<strong>(?P<strongContent>[^<>]+?)</strong>", "\g<strongContent>", filteredHtml, flags=re.I);
+    #logging.info("remove b,strong, filteredHtml=%s", filteredHtml);
+
+    return filteredHtml;
+
 ################################################################################
 # String
 ################################################################################
@@ -670,6 +722,28 @@ def convertToTupleVal(equationStr) :
 
     return (key, value);
 
+def filterNonAsciiStr(originalUnicodeStr):
+    """
+        remove (special) non-ascii (special unicode char)
+        -> avoid save to ascii occur error:
+        UnicodeEncodeError: 'ascii' codec can't encode character u'\u2028' in position 318: ordinal not in range(128)
+        
+        eg:
+        remove \u2028 from
+        Peapack, NJ. \u2028\u2028Mrs. Onassis bought
+        in
+        http://autoexplosion.com/cars/buy/150631.php
+                
+        remove \u201d from
+        OC Choppers Super Stretch 124\u201d Softail
+        in
+        http://autoexplosion.com/bikes/buy/11722.php
+    """
+    
+    filteredAscii = originalUnicodeStr.encode("ascii", 'ignore');
+    filteredUni = filteredAscii.decode("ascii", 'ignore');
+    
+    return filteredUni;
 
 ################################################################################
 # List
