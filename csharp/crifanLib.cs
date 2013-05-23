@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v4.8
+ * v5.1
  * 
  * [update]
- * 2013-04-25
+ * 2013-05-23
  * 
  * [Author]
  * Crifan
@@ -22,6 +22,13 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v5.1]
+ * 1. make HtmlAgilityPack html tag option/form has its children
+ * 
+ * [v5.0]
+ * 1. add content-type for getUrlResponse
+ * 2. add definition for bw version getUrlResponse
+ * 
  * [v4.8]
  * 1. update quoteParas to support space to %20
  * 2. add getSaveFolder
@@ -45,29 +52,29 @@
  * 1.convert getUrlResponse and getUrlRespStreamBytes into BackgroundWorker version
  *   to ehance UI response during these operation
  * 
- * v2.9:
+ * [v2.9]
  * 1. add Application.DoEvents for getUrlRespStreamBytes for up layer UI update
  * 2. add functions: getCurDownloadPercent
  * 
- * v2.8
+ * [v2.8]
  * 1.add transZhcnToEn, translateString, getCurVerStr
  * 
- * v2.5:
+ * [v2.5]
  * 1. add postDataStr for getUrlResponse
  * 2. add functions: removeInvChrInPath, getCurTaskbarSize, getCurTaskbarLocation, getCornerLocation
  * 
- * v2.0:
+ * [v2.0]
  * 1. add functions: getUrlRespHtml, getUrlResponse, getUrlRespStreamBytes
  * 2. add saveBytesToFile
  * 3. remove the skydrive related functions, for it's not belong to common functions
- *  
  */
 
 
 //comment out following macros if not use them
+#define USE_GETURLRESPONSE_BW //for getUrlResponse use backgroundworker version
 //#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
 #define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
-#define USE_DATAGRIDVIEW
+//#define USE_DATAGRIDVIEW
 
 
 using System;
@@ -118,12 +125,12 @@ public class crifanLib
 
     //private long totalLength = 0;
     //private long currentLength = 0;
-
+#if USE_GETURLRESPONSE_BW
     //indicate background worker complete or not
     bool bNotCompleted_resp = true;
     //store response of http request
     private HttpWebResponse gCurResp = null;
-
+#endif
 
     private BackgroundWorker gBgwDownload;
     //indicate download complete or not
@@ -151,8 +158,9 @@ public class crifanLib
 
         //init for calc time
         calcTimeList = new Dictionary<string, DateTime>();
-
+#if USE_GETURLRESPONSE_BW
         gBgwDownload = new BackgroundWorker();
+#endif
     }
 
     /*------------------------Private Functions------------------------------*/
@@ -1203,6 +1211,8 @@ public class crifanLib
         req.AllowAutoRedirect = true;
         req.Accept = "*/*";
 
+        //req.ContentType = "text/plain";
+
         //const string gAcceptLanguage = "en-US"; // zh-CN/en-US
         //req.Headers["Accept-Language"] = gAcceptLanguage;
 
@@ -1277,6 +1287,10 @@ public class crifanLib
                     {
                         req.UserAgent = headerValue;
                     }
+                    else if (header.ToLower() == "content-type")
+                    {
+                        req.ContentType = headerValue;
+                    }
                     else
                     {
                         req.Headers[header] = headerValue;
@@ -1292,8 +1306,11 @@ public class crifanLib
         if (postDict != null || postDataStr != "")
         {
             req.Method = "POST";
-            req.ContentType = "application/x-www-form-urlencoded";
-
+            if (req.ContentType == null)
+            {
+                req.ContentType = "application/x-www-form-urlencoded";
+            }
+            
             if (postDict != null)
             {
                 postDataStr = quoteParas(postDict);
@@ -1320,7 +1337,7 @@ public class crifanLib
 
         return resp;
     }
-            
+#if USE_GETURLRESPONSE_BW
     private void getUrlResponse_bw(string url,
                                     Dictionary<string, string> headerDict,
                                     Dictionary<string, string> postDict,
@@ -1386,6 +1403,7 @@ public class crifanLib
             gCurResp = (HttpWebResponse)e.Result;
         }
     }
+#endif
 
     /* get url's response
     * */
@@ -1395,6 +1413,7 @@ public class crifanLib
                                     int timeout,
                                     string postDataStr)
     {
+#if USE_GETURLRESPONSE_BW
         HttpWebResponse localCurResp = null;
         getUrlResponse_bw(url, headerDict, postDict, timeout, postDataStr);
         while (bNotCompleted_resp)
@@ -1402,11 +1421,14 @@ public class crifanLib
             System.Windows.Forms.Application.DoEvents();
         }
         localCurResp = gCurResp;
-        
+
         //clear
         gCurResp = null;
 
         return localCurResp;
+#else
+        return _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);;
+#endif
     }
     
     public HttpWebResponse getUrlResponse(string url,
@@ -2242,6 +2264,12 @@ public class crifanLib
     public HtmlAgilityPack.HtmlDocument htmlToHtmlDoc(string html)
     {
         HtmlAgilityPack.HtmlDocument htmlDoc = new HtmlAgilityPack.HtmlDocument();
+
+        //http://www.crifan.com/htmlagilitypack_html_tag_form_option_no_child_via_sibling_get_innertext/
+        //make some html tag: form/option, has child
+        HtmlNode.ElementsFlags.Remove("form");
+        HtmlNode.ElementsFlags.Remove("option");
+
         htmlDoc.LoadHtml(html);
 
         return htmlDoc;
