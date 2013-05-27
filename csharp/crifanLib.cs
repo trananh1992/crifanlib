@@ -9,19 +9,23 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v5.1
+ * v5.7
  * 
  * [update]
- * 2013-05-23
+ * 2013-05-26
  * 
  * [Author]
- * Crifan
+ * Crifan Li
  * 
  * [Contact]
  * http://www.crifan.com/crifan_released_all/crifanlib/
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v5.7]
+ * 1. add ounceToKiloGram, kiloGramToOunce, kiloGramToPound, poundToKiloGram
+ * 2. add inchToCm, cmToInch
+ * 
  * [v5.1]
  * 1. make HtmlAgilityPack html tag option/form has its children
  * 
@@ -199,6 +203,51 @@ public class crifanLib
 
 
     /*------------------------Public Functions-------------------------------*/
+    /*********************************************************************/
+    /* Unit conversion
+    /*********************************************************************/
+
+    public float ounceToKiloGram(float ounce)
+    {
+        float kiloGram = ounce * 0.028349523125F;
+
+        return kiloGram;
+    }
+
+    public float kiloGramToOunce(float kiloGram)
+    {
+        float ounce = kiloGram * 35.27396194958F;
+
+        return ounce;
+    }
+
+    public float poundToKiloGram(float pound)
+    {
+        float kiloGram = pound * 0.45359237F;
+
+        return kiloGram;
+    }
+
+    public float kiloGramToPound(float kiloGram)
+    {
+        float pound = kiloGram * 0.45359237F;
+
+        return pound;
+    }
+    
+    public float inchToCm(float inch)
+    {
+        float cm = inch * 2.54F;
+
+        return cm;
+    }
+
+    public float cmToInch(float cm)
+    {
+        float inch = cm * 0.39370078740157F;
+
+        return inch;
+    }
 
     /*********************************************************************/
     /* Values: int/double/... */
