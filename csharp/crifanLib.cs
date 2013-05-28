@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v5.7
+ * v5.8
  * 
  * [update]
- * 2013-05-26
+ * 2013-05-28
  * 
  * [Author]
  * Crifan Li
@@ -22,6 +22,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v5.8]
+ * 1. add removeSubHtmlNode
+ * 
  * [v5.7]
  * 1. add ounceToKiloGram, kiloGramToOunce, kiloGramToPound, poundToKiloGram
  * 2. add inchToCm, cmToInch
@@ -2322,6 +2325,40 @@ public class crifanLib
         htmlDoc.LoadHtml(html);
 
         return htmlDoc;
+    }
+
+    //remove sub node from current html node
+    //eg: 
+    //"script"
+    //for
+    //<script type="text/javascript"> 
+    public HtmlNode removeSubHtmlNode(HtmlNode curHtmlNode, string subNodeToRemove)
+    {
+        HtmlNode afterRemoved = curHtmlNode;
+        
+        ////method 1: fail
+        ////foreach (var subNode in afterRemoved.Descendants(subNodeToRemove))
+        //foreach (HtmlNode subNode in afterRemoved.Descendants(subNodeToRemove))
+        //{
+        //    //An unhandled exception of type 'System.InvalidOperationException' occurred in mscorlib.dll
+        //    //Additional information: Collection was modified; enumeration operation may not execute.
+            
+        //    //afterRemoved.RemoveChild(subNode);
+        //    //curHtmlNode.RemoveChild(subNode);
+        //    subNode.Remove();
+        //}
+
+        //method 2: OK
+        HtmlNodeCollection foundAllSub = curHtmlNode.SelectNodes(subNodeToRemove);
+        if ((foundAllSub != null) && (foundAllSub.Count > 0))
+        {
+            foreach (HtmlNode subNode in foundAllSub)
+            {
+                curHtmlNode.RemoveChild(subNode);
+            }
+        }
+
+        return afterRemoved;
     }
     #endif
 
