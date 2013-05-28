@@ -9,7 +9,7 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v5.8
+ * v6.0
  * 
  * [update]
  * 2013-05-28
@@ -22,6 +22,10 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v6.0]
+ * 1. add getUrlRespHtml_multiTry
+ * 2. fix bug of ReadToEnd hangs/dead for getUrlRespHtml
+ * 
  * [v5.8]
  * 1. add removeSubHtmlNode
  * 
@@ -1383,10 +1387,20 @@ public class crifanLib
 
         //may timeout, has fixed in:
         //http://www.crifan.com/fixed_problem_sometime_httpwebrequest_getresponse_timeout/
-        resp = (HttpWebResponse)req.GetResponse();
+        try
+        {
+            resp = (HttpWebResponse)req.GetResponse();
+            updateLocalCookies(resp.Cookies, ref curCookies);
+        }
+        catch (WebException  webEx)
+        {
+            if (webEx.Status == WebExceptionStatus.Timeout)
+            {
+                resp = null;
+            }
+        }
 
-        updateLocalCookies(resp.Cookies, ref curCookies);
-
+        
         return resp;
     }
 #if USE_GETURLRESPONSE_BW
@@ -1515,18 +1529,45 @@ public class crifanLib
         HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout, postDataStr);
 
         //long realRespLen = resp.ContentLength;
+        if (resp != null)
+        {
+            StreamReader sr;
+            if ((charset != null) && (charset != ""))
+            {
+                Encoding htmlEncoding = Encoding.GetEncoding(charset);
+                sr = new StreamReader(resp.GetResponseStream(), htmlEncoding);
+            }
+            else
+            {
+                sr = new StreamReader(resp.GetResponseStream());
+            }
+            
+            respHtml = sr.ReadToEnd();
+            sr.Close();
 
-        StreamReader sr;
-        if ((charset != null) && (charset != ""))
-        {
-            Encoding htmlEncoding = Encoding.GetEncoding(charset);
-            sr = new StreamReader(resp.GetResponseStream(), htmlEncoding);
+            resp.Close();
         }
-        else
+
+        return respHtml;
+    }
+
+    public string getUrlRespHtml_multiTry
+                                    (string url,
+                                    Dictionary<string, string> headerDict = null,
+                                    string charset = null,
+                                    Dictionary<string, string> postDict = null,
+                                    int timeout = 20*1000,/* defaul use timeout to 20*1000ms */
+                                    string postDataStr = "",
+                                    int maxTryNum = 5)                                
+    {
+        string respHtml = "";
+
+        for (int tryIdx = 0; tryIdx < maxTryNum; tryIdx++)
         {
-            sr = new StreamReader(resp.GetResponseStream());
+            respHtml = getUrlRespHtml(url, headerDict, charset, postDict, timeout, postDataStr);
+            if (respHtml != "")
+                break;
         }
-        respHtml = sr.ReadToEnd();
 
         return respHtml;
     }
