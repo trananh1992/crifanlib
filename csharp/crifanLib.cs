@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v6.0
+ * v6.3
  * 
  * [update]
- * 2013-05-28
+ * 2013-05-29
  * 
  * [Author]
  * Crifan Li
@@ -22,6 +22,13 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v6.3]
+ * 1. add extractSingleStr regex option support
+ * 
+ * [v6.2]
+ * 1. add extractFilenameFromUrl
+ * 2. add downloadFile
+ * 
  * [v6.0]
  * 1. add getUrlRespHtml_multiTry
  * 2. fix bug of ReadToEnd hangs/dead for getUrlRespHtml
@@ -327,10 +334,10 @@ public class crifanLib
 
     //using Regex to extract single string value
     // caller should make sure the string to extract is Groups[1] == include single () !!!
-    public bool extractSingleStr(string pattern, string extractFrom, out string extractedStr)
+    public bool extractSingleStr(string pattern, string extractFrom, out string extractedStr, RegexOptions regexOption = RegexOptions.None)
     {
         bool extractOK = false;
-        Regex rx = new Regex(pattern);
+        Regex rx = new Regex(pattern, regexOption);
         Match found = rx.Match(extractFrom);
         if (found.Success)
         {
@@ -434,6 +441,18 @@ public class crifanLib
         string filteredStr = Regex.Replace(esacapeSequenceStr, @"\\x\w{2}", new MatchEvaluator(_replaceEscapeSequenceToChar));
 
         return filteredStr;
+    }
+
+    //extract filename from url
+    //eg:
+    //http://g-ecx.images-amazon.com/images/G/01/kindle/dp/2012/KC/KC-slate-01-lg._V401028090_.jpg
+    //KC-slate-01-lg._V401028090_.jpg
+    public string extractFilenameFromUrl(string fullUrl)
+    {
+        string filename = "";
+        string[] slashList = fullUrl.Split('/');
+        filename = slashList[slashList.Length - 1];
+        return filename;
     }
 
     /*********************************************************************/
@@ -2190,14 +2209,55 @@ public class crifanLib
 
         return saveOk;
     }
-    
+
+    //download file from url
+    //makesure destination folder exist before call this function
+    //input para example:
+    //http://g-ecx.images-amazon.com/images/G/01/kindle/dp/2012/KC/KC-slate-01-lg._V401028090_.jpg
+    //download\B007OZNZG0\KC-slate-01-lg._V401028090_.jpg
+    public bool downloadFile(string fileUrl, string fullnameToStore, out string errStr, Action<int> funcUpdateProgress)
+    {
+        bool downloadOk = false;
+        errStr = "未知错误！";
+
+        if ((fileUrl == null) || (fileUrl == ""))
+        {
+            errStr = "URL地址为空！";
+            return downloadOk;
+        }
+
+        if ((fullnameToStore == null) || (fullnameToStore == ""))
+        {
+            errStr = "文件保存路径为空！";
+            return downloadOk;
+        }
+
+        //const int maxFileLen = 100 * 1024 * 1024; // 100M
+        const int maxFileLen = 300 * 1024 * 1024; // 300M
+        Byte[] binDataBuf = new Byte[maxFileLen];
+
+        int respDataLen = getUrlRespStreamBytes(ref binDataBuf, fileUrl, null, null, 0, funcUpdateProgress);
+        if (respDataLen < 0)
+        {
+            errStr = "无法下载文件数据！";
+            return downloadOk;
+        }
+
+        if (saveBytesToFile(fullnameToStore, ref binDataBuf, respDataLen, out errStr))
+        {
+            downloadOk = true;
+        }
+
+        return downloadOk;
+    }
+
+
     //open folder and select file
     public void openFolderAndSelectFile(string fullFilename)
     {
         System.Diagnostics.Process.Start("Explorer.exe", "/select," + fullFilename);
     }
-
-
+    
     /*********************************************************************/
     /* Screen */
     /*********************************************************************/
