@@ -9,19 +9,23 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v6.3
+ * v6.4
  * 
  * [update]
- * 2013-05-29
+ * 2013-06-01
  * 
  * [Author]
  * Crifan Li
  * 
  * [Contact]
+ * http://www.crifan.com/contact_me/
  * http://www.crifan.com/crifan_released_all/crifanlib/
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v6.4]
+ * 1. add jsonToDict
+ * 
  * [v6.3]
  * 1. add extractSingleStr regex option support
  * 
@@ -109,6 +113,7 @@ using System.Reflection;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Globalization;
+using System.Web.Script.Serialization; // need: .NET 3.5+
 
 #if USE_HTML_PARSER_SGML
 using Sgml;
@@ -447,6 +452,8 @@ public class crifanLib
     //eg:
     //http://g-ecx.images-amazon.com/images/G/01/kindle/dp/2012/KC/KC-slate-01-lg._V401028090_.jpg
     //KC-slate-01-lg._V401028090_.jpg
+    //file:///C:/Users/CLi/AppData/Local/Temp/WindowsLiveWriter-1737927945/supfilesC19F10/now-the-service-status-is-active_thu%5B1%5D.png
+    //now-the-service-status-is-active_thu%5B1%5D.png
     public string extractFilenameFromUrl(string fullUrl)
     {
         string filename = "";
@@ -2820,46 +2827,23 @@ public class crifanLib
     /*********************************************************************/
     /* JSON */
     /*********************************************************************/
-    //void testJson()
-    //{
-    //    // to deserialize a string to an object
-    //    //string filteredJsonText = jsonText.Replace("'", "\"");
-    //    //var newobj = fastJSON.JSON.Instance.ToObject(filteredJsonText);
 
-    //    //            string simpleJsonText = @"{
-    //    //'query': 'weight loss',
-    //    //'frequency': '3',
-    //    //'has_recent_results': 1,
-    //    //'results': [
-    //    //{
-    //    //'input': 'NEWS',
-    //    //'html': 'xxxxx'
-    //    //}
-    //    //,
-    //    //{
-    //    //'input': 'WEB',
-    //    //'html': 'yyyyyy'
-    //    //}
-    //    //]
-    //    //}";
-    //    //            //string noSpaceJsonText = @"{'query':'weight loss','frequency':'3','has_recent_results':1,'results':[{'input':'NEWS','html':'xxxxx'},{'input':'WEB','html':'yyyyyy'}]}";
-    //    //            string noSpaceJsonText = "{'query':'weight loss','frequency':'3','has_recent_results':1,'results':[{'input':'NEWS','html':'xxxxx'},{'input':'WEB','html':'yyyyyy'}]}";
-    //    //            string filteredJsonText = noSpaceJsonText.Replace("'", "\"");
-    //    //            var newobj = fastJSON.JSON.Instance.ToObject(filteredJsonText);
+    /*
+     * [Function]
+     * convert json string into dictionary object
+     * [Input]
+     * json string
+     * [Output]
+     * object, internally is dictionary
+     * [Note]
+     * 1.you should know the internal structure of the dictionary
+     * then converted to specific type of yours
+     */
+    public Object jsonToDict(string jsonStr)
+    {
+        JavaScriptSerializer jsonSerializer = new JavaScriptSerializer() { MaxJsonLength = int.MaxValue };
+        Object dictObj = jsonSerializer.DeserializeObject(jsonStr);
 
-    //    //JsonReader reader = new JsonTextReader(new StringReader(jsonText));
-
-    //    //while (reader.Read())
-    //    //{
-    //    //    Console.WriteLine(reader.TokenType + "\t\t" + reader.ValueType + "\t\t" + reader.Value);
-    //    //}
-
-    //    //string filteredJsonText = jsonText.Replace("'", "\"");
-
-    //    //string htmlDecodedJson = HttpUtility.HtmlDecode(jsonText); // only decode html entity, NOT decode escape sting: \x0A
-    //    ////string htmlDecodedJson = System.Net.WebUtility.HtmlDecode(jsonText); // need .NET 4.0
-    //    //string filteredJson = filterEscapeSequence(htmlDecodedJson);
-    //    //JavaScriptSerializer serializer = new JavaScriptSerializer();
-    //    //searchResultJson collection = serializer.Deserialize<searchResultJson>(filteredJson);
-    //}
+        return dictObj;
+    }
 }
