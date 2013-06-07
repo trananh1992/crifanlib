@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v6.4
+ * v6.5
  * 
  * [update]
- * 2013-06-01
+ * 2013-06-07
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v6.5]
+ * 1. change byte buffer alloc scenario for downloadFile
+ * 
  * [v6.4]
  * 1. add jsonToDict
  * 
@@ -2241,7 +2244,17 @@ public class crifanLib
 
         //const int maxFileLen = 100 * 1024 * 1024; // 100M
         const int maxFileLen = 300 * 1024 * 1024; // 300M
-        Byte[] binDataBuf = new Byte[maxFileLen];
+        const int lessMaxFileLen = 100 * 1024 * 1024; // 100M
+        Byte[] binDataBuf;
+        try
+        {
+            binDataBuf = new Byte[maxFileLen];
+        }
+        catch (Exception ex)
+        {
+            //if no enough memory, then try alloc less
+            binDataBuf = new Byte[lessMaxFileLen];
+        }
 
         int respDataLen = getUrlRespStreamBytes(ref binDataBuf, fileUrl, null, null, 0, funcUpdateProgress);
         if (respDataLen < 0)
