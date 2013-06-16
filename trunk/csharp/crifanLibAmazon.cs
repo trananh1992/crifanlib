@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v2.1
+ * v2.5
  * 
  * [update]
- * 2013-06-07
+ * 2013-06-11
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,13 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v2.5]
+ * 1. add NLog log system support
+ * 
+ * [v2.4]
+ * 1. update checkVariation, extractSearchItemList
+ * 2. add extractProductKeywordField
+ * 
  * [v2.1]
  * 1. checkVariation, extractAsinFromProductUrl, generateProductUrlFromAsin
  * 2. update some func
@@ -54,27 +61,49 @@ using System.Text.RegularExpressions;
 using System.Web;
 using HtmlAgilityPack;
 
+using NLog;
+using NLog.Targets;
+using NLog.Config;
+
 public class crifanLibAmazon
 {
     public static string constAmazonDomainUrl = "http://www.amazon.com";
     public static string constAmazonGpProductUrl = "http://www.amazon.com/gp/product/";
-
+    public static string constAmazonGpOfferListingUrl = "http://www.amazon.com/gp/offer-listing/";
+    public static string constAmazonGpCustomImageUrl = "http://www.amazon.com/gp/customer-media/product-gallery/";
+    
     public crifanLib crl;
+
+    //for log
+    public Logger gLogger = null;
+    
+    //find global defaut (current using) logger
     public crifanLibAmazon()
     {
         //init something
         crl = new crifanLib();
+
+        gLogger = LogManager.GetLogger("");
     }
 
+    //specify your logger
+    public crifanLibAmazon(Logger logger)
+    {
+        //init something
+        crl = new crifanLib();
+
+        gLogger = logger;
+    }
+
+    //for main catetory/best seller category/...
     public struct categoryItem
     {
         public string Name { get; set; } //Amazon Instant Video
-        //public string Url { get; set; } //http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dinstant-video
+        public string Url { get; set; } //http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dinstant-video
+        //for main category, category key called search alias
         public string Key { get; set; } //instant-video
-        //public string name;
-        //public string url;
     };
-
+    
     public struct productDimension
     {
         public float length;
@@ -123,7 +152,7 @@ public class crifanLibAmazon
         
         public List<variationItem> variationList;
     }
-
+    
     /*
      * [Function]
      * extract product asin from product url
@@ -132,12 +161,14 @@ public class crifanLibAmazon
      * eg:
      * http://www.amazon.com/gp/product/B0083PWAPW
      * http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=lp_1055398_1_4?ie=UTF8&qid=1370574186&sr=1-4
+     * http://www.amazon.com/Kindle-Paperwhite-Touch-light/dp/B007OZNZG0/ref=lp_1055398_1_1?ie=UTF8&qid=1369818181&sr=1-1
      * http://www.amazon.com/gp/product/B003BIG0DO/ref=twister_B000AST3AK?ie=UTF8&psc=1
      * [Output]
      * product asin
      * eg:
      * B0083PWAPW
      * B000AST3AK
+     * B007OZNZG0
      * B003BIG0DO
      * [Note]
      */
@@ -187,7 +218,51 @@ public class crifanLibAmazon
 
         return productUrl;
     }
+    
+    /*
+     * [Function]
+     * generate offer listing url from asin
+     * [Input]
+     * amazon item asin
+     * eg:
+     * B003F4TH6G
+     * [Output]
+     * offer listing url
+     * eg:
+     * http://www.amazon.com/gp/offer-listing/B003F4TH6G
+     * [Note]
+     */
+    public string generateOfferListingUrl(string itemAsin)
+    {
+        string offerListingUrl = "";
+        //http://www.amazon.com/gp/offer-listing/B003F4TH6G
+        offerListingUrl = constAmazonGpOfferListingUrl + itemAsin; //http://www.amazon.com/gp/offer-listing/B003F4TH6G
 
+        return offerListingUrl;
+    }
+
+    /*
+     * [Function]
+     * generate custom image url from asin
+     * [Input]
+     * amazon item asin
+     * eg:
+     * B003C9HUDQ
+     * [Output]
+     * custom image url
+     * eg:
+     * http://www.amazon.com/gp/customer-media/product-gallery/B003C9HUDQ
+     * [Note]
+     */
+    public string generateCustomImageUrlFromAsin(string itemAsin)
+    {
+        string customImageUrl = "";
+        //http://www.amazon.com/gp/customer-media/product-gallery/B003C9HUDQ
+        customImageUrl = constAmazonGpCustomImageUrl + itemAsin;
+
+        return customImageUrl;
+    }
+    
     /*
      * [Function]
      * extract next page url
@@ -259,11 +334,33 @@ public class crifanLibAmazon
         //<div id="result_25" class="fstRowGrid prod celwidget" name="B003AZBASI">
         //...
 
+
         HtmlAgilityPack.HtmlDocument htmlDoc = crl.htmlToHtmlDoc(searchRespHtml);
         HtmlNodeCollection resultItemNodeList;
         //resultItemNodeList = htmlDoc.DocumentNode.SelectNodes("//div[@id and @class and @name]");
         //resultItemNodeList = htmlDoc.DocumentNode.SelectNodes("//div[starts-with(@id, 'result_') and starts-with(@class, 'result ') and @name]");
         resultItemNodeList = htmlDoc.DocumentNode.SelectNodes("//div[starts-with(@id, 'result_') and @class and @name]");
+
+        
+        //============ for Best Seller ===========
+        //http://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/ref=zg_bs_nav_0
+        //<div class="zg_itemImmersion">
+        HtmlNodeCollection bestSellerResultItemNodeList = htmlDoc.DocumentNode.SelectNodes("//div[@class='zg_itemImmersion']");
+
+
+        //============ for some main category ===========
+        //http://www.amazon.com/s/ref=sr_nr_n_0?rh=n%3A2858778011%2Cn%3A2858905011&bbn=2858778011&ie=UTF8&qid=1371204088&rnid=2858778011
+        //<div id="mainResults" class="results ilr2">
+        //    <ul class="ilo2">
+        //    <li id="result_0" class="ilo2" name="B00D6C5RMA">
+        //      ......
+        //    </li>
+        //    <li id="result_1" class="ilo2" name="B008Y7N7JW">
+        //      ......
+        //    </li>
+        HtmlNodeCollection mainResultsLiNodeList = htmlDoc.DocumentNode.SelectNodes("//li[starts-with(@id, 'result_') and @class and @name]");
+
+
         if (resultItemNodeList != null)
         {
             foreach (HtmlNode resultItemNode in resultItemNodeList)
@@ -277,6 +374,68 @@ public class crifanLibAmazon
                 {
                     string productUrl = h3aNode.Attributes["href"].Value;//"http://www.amazon.com/Pilot-HD/dp/B00CE18P0K/ref=sr_1_1?s=instant-video&amp;ie=UTF8&amp;qid=1368688342&amp;sr=1-1"
                     string decodedProductUrl = HttpUtility.HtmlDecode(productUrl);//"http://www.amazon.com/Silver-Linings-Playbook/dp/B00CL68QVQ/ref=sr_1_2?s=instant-video&ie=UTF8&qid=1368688342&sr=1-2"
+
+                    curItem.productUrl = decodedProductUrl;
+
+                    itemList.Add(curItem);
+
+                    extractItemListOk = true;
+                }
+                else
+                {
+                    //something wrong
+                }
+            }
+        }
+        else if ((bestSellerResultItemNodeList != null) && (bestSellerResultItemNodeList.Count > 0))
+        {
+            foreach (HtmlNode resultItemNode in bestSellerResultItemNodeList)
+            {
+                crifanLibAmazon.searchResultItem curItem = new crifanLibAmazon.searchResultItem();
+                //<div class="zg_itemImmersion">
+                //    <div class="zg_rankDiv"><span class="zg_rankNumber">1.</span></div>
+                //    <div class="zg_itemWrapper" style="height:285px">
+                //        <div class="zg_image">
+                //            <div class="zg_itemImageImmersion">
+                //                <a  href="http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=zg_bs_appliances_1">
+                //                    <img src="http://ecx.images-amazon.com/images/I/31hHFppUjnL._SL160_SL150_.jpg" alt="GE MWF Refrigerator Water Filter, 1-Pack" title="GE MWF Refrigerator Water Filter, 1-Pack" onload="if (typeof uet == 'function') { uet('af'); }"/>
+                //                </a>
+                //            </div>
+                //        </div>
+                HtmlNode zgItemNode = resultItemNode.SelectSingleNode(".//div[@class='zg_itemImageImmersion']/a");
+                if (zgItemNode != null)
+                {
+                    string productUrl = zgItemNode.Attributes["href"].Value;//"\n\n\n\n\n\n\nhttp://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=zg_bs_appliances_1/184-1909798-9660844\n"
+                    productUrl = productUrl.Trim(); //"http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=zg_bs_appliances_1/184-1909798-9660844"
+                    string decodedProductUrl = HttpUtility.HtmlDecode(productUrl);//"http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=zg_bs_appliances_1/184-1909798-9660844"
+
+                    curItem.productUrl = decodedProductUrl;
+
+                    itemList.Add(curItem);
+
+                    extractItemListOk = true;
+                }
+                else
+                {
+                    //something wrong
+                }
+            }
+        }
+        else if ((mainResultsLiNodeList != null) && (mainResultsLiNodeList.Count > 0))
+        {
+            foreach (HtmlNode mainResultsLiNode in mainResultsLiNodeList)
+            {
+                crifanLibAmazon.searchResultItem curItem = new crifanLibAmazon.searchResultItem();
+
+                //<a class="ilo2 ilc2" href="http://www.amazon.com/Identity-Thief/dp/B00D6C5RMA/ref=lp_2858905011_1_1?ie=UTF8&amp;qid=1371204118&amp;sr=1-1">
+                //  <img src="http://ecx.images-amazon.com/images/I/515k2ziGvrL._AA200_.jpg" class="ilo2 ilc2" />
+                //</a>
+                HtmlNode ilo2Node = mainResultsLiNode.SelectSingleNode(".//a[@class='ilo2 ilc2']");
+                if (ilo2Node != null)
+                {
+                    string productUrl = ilo2Node.Attributes["href"].Value; //"http://www.amazon.com/Identity-Thief/dp/B00D6C5RMA/ref=lp_2858905011_1_1?ie=UTF8&amp;qid=1371204140&amp;sr=1-1"
+                    productUrl = productUrl.Trim(); //"http://www.amazon.com/Identity-Thief/dp/B00D6C5RMA/ref=lp_2858905011_1_1?ie=UTF8&amp;qid=1371204140&amp;sr=1-1"
+                    string decodedProductUrl = HttpUtility.HtmlDecode(productUrl); //"http://www.amazon.com/Identity-Thief/dp/B00D6C5RMA/ref=lp_2858905011_1_1?ie=UTF8&qid=1371204140&sr=1-1"
 
                     curItem.productUrl = decodedProductUrl;
 
@@ -327,8 +486,8 @@ public class crifanLibAmazon
         else
         {
             //something wrong
+            gLogger.Warn("can not extract asin from url=" + productUrl);
         }
-
 
         //http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=lp_1055398_1_4?ie=UTF8&qid=1370574186&sr=1-4
         //has 4 variation
@@ -452,14 +611,30 @@ public class crifanLibAmazon
         //http://www.amazon.com/Maytag-UKF8001-Refrigerator-Filter-1-Pack/dp/B001XW8KW4/ref=lp_1055398_1_9?ie=UTF8&qid=1370574186&sr=1-9
         //has 3 variation
 
+
+        //http://www.amazon.com/Sundesa-BB28-SC08-BlenderBottle%C2%AE-Classic-28-ounce/dp/B001KADGMI/ref=zg_bs_appliances_8/184-1909798-9660844
+        //two group -> 3x8=24 variation
+
         //example url:
         //http://www.amazon.com/Garmin-5-Inch-Portable-Navigator-Lifetime/dp/B0057OCDQS/ref=lp_1055398_1_6?ie=UTF8&qid=1369727413&sr=1-6
 
+
+        //http://www.amazon.com/GE-MWF-Refrigerator-Filter-1-Pack/dp/B000AST3AK/ref=zg_bs_appliances_1/178-1487576-1992961
+        //5 variation
+        //<div class="buying">
+        //  <strong>
+        //  <label for="asinRedirect">Size Name:</label>
+        //  </strong><br />
+        //  <select name="asin-redirect" id="asinRedirect" onchange="gotoDetailPage(this)">
+        //    <option value="B000AST3AK"  selected="selected" title="1-Pack">1-Pack</option><option value="B003BIG0DO"  title="2-Pack">2-Pack</option><option value="B00149JVOC"  title="3 Pack">3 Pack</option><option value="B003BIG0DY"  title="4-Pack">4-Pack</option><option value="B003BIG0E8"  title="6-Pack">6-Pack</option>
+        //  </select>
 
         //init
         string productHtml = crl.getUrlRespHtml_multiTry(productUrl);
         HtmlDocument htmlDoc = crl.htmlToHtmlDoc(productHtml);
         HtmlNode rootNode = htmlDoc.DocumentNode;
+
+        HtmlNode selectAsinNode = rootNode.SelectSingleNode("//select[@name='asin-redirect' and @id='asinRedirect']");
 
         //1.find current selected
         HtmlNode curSelectNode = rootNode.SelectSingleNode("//div[@class='variationSelected']");
@@ -533,6 +708,7 @@ public class crifanLibAmazon
                             else
                             {
                                 //something wrong
+                                gLogger.Debug("selected label find from html not equal with current real selected label, for url=" + productUrl);
                             }
                         }
 
@@ -570,6 +746,7 @@ public class crifanLibAmazon
                 else
                 {
                     //something wrong
+                    gLogger.Debug("swatchNodeList is null or count <= 0 for url=" + productUrl);
                 }
             }
             else
@@ -579,7 +756,7 @@ public class crifanLibAmazon
                 //special: no variationLabel
                 //http://www.amazon.com/Kindle-Fire-HD/dp/B0083PWAPW/ref=lp_1055398_1_1?ie=UTF8&qid=1370574186&sr=1-1
                 //has two group -> 4 variation
-                
+
                 //<input type="hidden" name="variationDimensionValue.B0083PWAPW" value="16 GB,With Special Offers"/>
                 //<input type="hidden" name="variationDimensionValue.B007T36PSM" value="16 GB,Without Special Offers"/>
                 //<input type="hidden" name="variationDimensionValue.B008SYWFNA" value="32 GB,With Special Offers"/>
@@ -621,11 +798,58 @@ public class crifanLibAmazon
                 {
                     //something wrong
                     //or no variation ?
+                    gLogger.Debug("variationDimenstionNodeList is null or count <= 0 -> something wrong or no variation ? for url=" + productUrl);
                 }
             }
         }
-        else 
+        else if (selectAsinNode != null)
         {
+            //<select name="asin-redirect" id="asinRedirect" onchange="gotoDetailPage(this)">
+            //    <option value="B000AST3AK"  selected="selected" title="1-Pack">1-Pack</option>
+            //    <option value="B003BIG0DO"  title="2-Pack">2-Pack</option>
+            //    <option value="B00149JVOC"  title="3 Pack">3 Pack</option>
+            //    <option value="B003BIG0DY"  title="4-Pack">4-Pack</option>
+            //    <option value="B003BIG0E8"  title="6-Pack">6-Pack</option>
+            //</select>
+            HtmlNodeCollection optionNodeList = selectAsinNode.SelectNodes("./option[@value]");
+            if ((optionNodeList != null) && (optionNodeList.Count > 0))
+            {
+                for (int idx = 0; idx < optionNodeList.Count; idx++)
+                {
+                    HtmlNode optionNode = optionNodeList[idx];
+                    variationItem singleVariationItem = new variationItem();
+
+                    string titleValue = optionNode.Attributes["title"].Value;
+                    singleVariationItem.label = titleValue;
+
+                    if (optionNode.Attributes.Contains("selected"))
+                    {
+                        //is current selected
+                        variationInfo.curSelectdIdx = idx;
+                        variationInfo.curSelectLable = singleVariationItem.label;
+                        singleVariationItem.url = variationInfo.curSelectUrl;
+                    }
+                    else
+                    {
+                        string asinStr = optionNode.Attributes["value"].Value;
+                        string generatedProductUrl = generateProductUrlFromAsin(asinStr); //"http://www.amazon.com/gp/product/B003BIG0DO"
+                        singleVariationItem.url = generatedProductUrl;
+                    }
+
+                    variationInfo.variationList.Add(singleVariationItem);
+                }
+
+                foundVariation = true;
+            }
+            else
+            {
+                //somethin wrong
+                gLogger.Debug("optionNodeList is null or count <= 0");
+            }
+        }
+        else
+        {
+            gLogger.Debug("no variation for " + productUrl);
             //no viration
             //http://www.amazon.com/Paderno-World-Cuisine-A4982799-Tri-Blade/dp/B0007Y9WHQ/ref=lp_1055398_1_4?ie=UTF8&qid=1370591290&sr=1-4
             //http://www.amazon.com/Ziploc-Space-Bag-Saver-Set/dp/B00BEBXH5O/ref=lp_1055398_1_5?ie=UTF8&qid=1370591290&sr=1-5
@@ -702,7 +926,7 @@ public class crifanLibAmazon
      * list of product sellers' info
      * [Note]
      */
-    public List<productSellerInfo> extractSinglePageSellerInfo(string curPageSellerHtml)
+    public List<productSellerInfo> extractSinglePageSellerInfo(string curPageSellerUrl, string curPageSellerHtml)
     {
         List<productSellerInfo> curPageSellerInfoList = new List<productSellerInfo>();
 
@@ -802,6 +1026,7 @@ public class crifanLibAmazon
                     else
                     {
                         //something wrong ?
+                        gLogger.Warn("not find sellerBNode for " + curPageSellerUrl);
                     }
                 }
 
@@ -819,7 +1044,7 @@ public class crifanLibAmazon
                 {
                     //something wrong
 
-                    //special:
+                    //or special:
                     //http://www.amazon.com/gp/offer-listing/B0057OCDQS/sr=/qid=/ref=olp_page_next?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&shipPromoFilter=0&sort=sip&sr=&startIndex=15
                     //no price:
                     //<tr>
@@ -830,6 +1055,7 @@ public class crifanLibAmazon
                     //        </div>
                     //    </td>
                     //    <td>
+                    gLogger.Debug("not find priceNode for " + curPageSellerUrl);
                 }
 
                 curPageSellerInfoList.Add(sellerInfo);
@@ -842,6 +1068,8 @@ public class crifanLibAmazon
             //We're sorry. There are currently no Used listings for
 
             //something wrong ?
+
+            gLogger.Debug("not find priceNode for " + curPageSellerUrl);
         }
        
         return curPageSellerInfoList;
@@ -868,7 +1096,7 @@ public class crifanLibAmazon
         while (true)
         {
             string curPageSellerHtml = crl.getUrlRespHtml_multiTry(curPageSellerUrl);
-            curPageSellerInfoList = extractSinglePageSellerInfo(curPageSellerHtml);
+            curPageSellerInfoList = extractSinglePageSellerInfo(curPageSellerUrl, curPageSellerHtml);
             if ((curPageSellerInfoList != null) && (curPageSellerInfoList.Count > 0))
             {
                 allSellerInfoList.AddRange(curPageSellerInfoList);
@@ -877,8 +1105,14 @@ public class crifanLibAmazon
             {
                 //something wrong ?
                 //maybe empty seller ?
+                
+                //http://www.amazon.com/gp/offer-listing/B000AST3AK/sr=/qid=/ref=olp_tab_used?ie=UTF8&colid=&coliid=&condition=used&me=&qid=&seller=&sr=
+                //We're sorry. There are currently no Used listings for ......
+
                 //so no need break here
                 //break;
+
+                gLogger.Debug("not find current page seller info for " + curPageSellerUrl);
             }
 
             //find next page url
@@ -994,6 +1228,7 @@ public class crifanLibAmazon
         {
             //something wrong ?
             extractSellerInfoOk = false;
+            gLogger.Debug("not found newANode for " + usedAndNewUrl);
         }
 
         //HtmlNode usedANode = rootNode.SelectSingleNode("//td[@id='used' and @class='olpmiddleoff']/a[@href]");
@@ -1013,9 +1248,76 @@ public class crifanLibAmazon
         {
             //something wrong ?
             extractSellerInfoOk = false;
+            gLogger.Debug("not found usedANode for " + usedAndNewUrl);
         }
 
         return extractSellerInfoOk;
+    }
+
+    /*
+     * [Function]
+     * extract product keyword filed, total 3 string, each <= 50 chars
+     * [Input]
+     * amazon product title
+     * "GE MWF Refrigerator Water Filter, 1-Pack"
+     * [Output]
+     * 3 keyword field
+     * "GE MWF Refrigerator Water Filter, 1-Pack"
+     * [Note]
+     */
+    public string[] extractProductKeywordField(string productTitle, int keywordFieldArrLen, int maxSingleKeywordFieldLen)
+    {
+        string[] keywordFieldArr = new string[keywordFieldArrLen];
+        crl.emptyStringArray(keywordFieldArr);
+
+        if(productTitle != "")
+        {
+            string noCommarTitle = productTitle.Replace(",", "");
+            string[] wordList = noCommarTitle.Split();
+            //[0]	"GE"	string
+            //[1]	"MWF"	string
+            //[2]	"Refrigerator"	string
+            //[3]	"Water"	string
+            //[4]	"Filter"	string
+            //[5]	"1-Pack"	string
+                        
+            string curKeywordFieldStr = "";
+            int curKeywordkFieldIdx = 0;
+            for (int idx = 0; idx < wordList.Length; idx++)
+            {
+                string singleWord = wordList[idx];
+                string oldKeywordFieldStr = curKeywordFieldStr;
+                string newKeywordFieldStr;
+                if (curKeywordFieldStr == "")
+                {
+                    newKeywordFieldStr = curKeywordFieldStr + singleWord;
+                }
+                else
+                {
+                    newKeywordFieldStr = curKeywordFieldStr + "," + singleWord;
+                }
+                
+                if ((oldKeywordFieldStr.Length < maxSingleKeywordFieldLen) && (newKeywordFieldStr.Length >= maxSingleKeywordFieldLen))
+                {
+                    keywordFieldArr[curKeywordkFieldIdx] = curKeywordFieldStr;
+                    ++curKeywordkFieldIdx;
+
+                    if (idx >= keywordFieldArrLen)
+                    {
+                        //done
+                        break;
+                    }
+                }
+                else if(newKeywordFieldStr.Length < maxSingleKeywordFieldLen)
+                {
+                    curKeywordFieldStr = newKeywordFieldStr;
+
+                    keywordFieldArr[curKeywordkFieldIdx] = curKeywordFieldStr;
+                }
+            }
+        }
+
+        return keywordFieldArr;
     }
 
     /*
@@ -1149,14 +1451,17 @@ public class crifanLibAmazon
                 //check whether match following
                 //#3 in Home Improvement (<a href="http://www.amazon.com/gp/bestsellers/hi/ref=pd_dp_ts_hi_1">See top 100</a>)
                 string tdClassValueHtml = tdClassValueNode.InnerHtml;//"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n#3 in Home Improvement (<a href=\"http://www.amazon.com/gp/bestsellers/hi/ref=pd_dp_ts_hi_1\">See top 100</a>)\n  \n\n\n\n\n\n\n \n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n<ul class=\"zg_hrsr\">\n    <li class=\"zg_hrsr_item\">\n    <span class=\"zg_hrsr_rank\">#1</span> \n    <span class=\"zg_hrsr_ladder\">in&nbsp;<a href=\"http://www.amazon.com/gp/bestsellers/hi/ref=pd_zg_hrsr_hi_1_1\">Home Improvement</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/3754161/ref=pd_zg_hrsr_hi_1_2\">Kitchen & Bath Fixtures</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/13397631/ref=pd_zg_hrsr_hi_1_3\">Water Filtration & Softeners</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/680337011/ref=pd_zg_hrsr_hi_1_4_last\">Faucet Water Filters</a></span>\n    </li>\n    <li class=\"zg_hrsr_item\">\n    <span class=\"zg_hrsr_rank\">#2</span> \n    <span class=\"zg_hrsr_ladder\">in&nbsp;<a href=\"http://www.amazon.com/gp/bestsellers/hi/ref=pd_zg_hrsr_hi_2_1\">Home Improvement</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/13397451/ref=pd_zg_hrsr_hi_2_2\">Appliances</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/3741181/ref=pd_zg_hrsr_hi_2_3\">Large Appliance Accessories</a> &gt; <a href=\"http://www.amazon.com/gp/bestsellers/hi/3741241/ref=pd_zg_hrsr_hi_2_4_last\">Refrigerator Parts & Accessories</a></span>\n    </li>\n</ul>\n\n\n\n\n"
-                Regex firstRankItemRx = new Regex(@"#(?<rankNumStr>\d+)\sin\s(?<categoryStr>.+?)\s\(<a\shref=""[^""]+?"">.+?</a>\)");
+                //Regex firstRankItemRx = new Regex(@"#(?<rankNumStr>\d+)\sin\s(?<categoryStr>.+?)\s\(<a\shref=""[^""]+?"">.+?</a>\)");
+                //#1,663 in Home Improvement (<a href=\"http://www.amazon.com/gp/bestsellers/hi/ref=pd_dp_ts_hi_1\">See top 100</a>)
+                Regex firstRankItemRx = new Regex(@"#(?<rankNumStr>[\d,]+)\sin\s(?<categoryStr>.+?)\s\(<a\shref=""[^""]+?"">.+?</a>\)");
                 Match foundFirstRankItem = firstRankItemRx.Match(tdClassValueHtml);
                 if (foundFirstRankItem.Success)
                 {
-                    string rankNumStr = foundFirstRankItem.Groups["rankNumStr"].Value;
+                    string rankNumStr = foundFirstRankItem.Groups["rankNumStr"].Value; //1,663
                     string categoryStr = foundFirstRankItem.Groups["categoryStr"].Value;
 
                     productBestRank bestRankItem = new productBestRank();
+                    rankNumStr = rankNumStr.Replace(",", ""); //1663
                     bestRankItem.rankNumber = Int32.Parse(rankNumStr);
                     bestRankItem.categoryList = new List<categoryInfo>();
 
@@ -1169,7 +1474,8 @@ public class crifanLibAmazon
                 }
                 else
                 {
-                    //something wrong 
+                    //something wrong
+                    gLogger.Debug("can not find foundFirstRankItem");
                 }
             }
 
@@ -1569,6 +1875,277 @@ public class crifanLibAmazon
 
     /*
      * [Function]
+     * from best seller category url, extract category key/alias
+     * [Input]
+     * http://www.amazon.com/Best-Sellers-Appstore-Android/zgbs/mobile-apps/ref=zg_bs_nav_0
+     * http://www.amazon.com/Best-Sellers-Appstore-For-Android/zgbs/mobile-apps/ref=zg_bs_nav_0
+     * http://www.amazon.com/Best-Sellers/zgbs/mobile-apps/ref=zg_bs_nav_0
+     * 
+     * http://www.amazon.com/best-sellers-camera-photo/zgbs/photo/ref=zg_bs_nav_0
+     * [Output]
+     * mobile-apps
+     * 
+     * photo
+     * [Note]
+     */
+    public bool extractCatKeyFromBestSellerCatUrl(string bestSellerCategoryUrl, out string categoryKey)
+    {
+        bool extractKeyOk = false;
+
+        categoryKey = "";
+
+        if (crl.extractSingleStr(@"http://www\.amazon\.com/best-sellers.*?/zgbs/(\w+)(/ref=.+?)?", bestSellerCategoryUrl, out categoryKey, RegexOptions.IgnoreCase))
+        {
+            categoryKey = categoryKey.ToLower();
+
+            extractKeyOk = true;
+        }
+
+        return extractKeyOk;
+    }
+
+    /*
+     * [Function]
+     * from category key, generate the best seller category url
+     * [Input]
+     * mobile-apps
+     * [Output]
+     * http://www.amazon.com/best-sellers/zgbs/mobile-apps
+     * [Note]
+     */
+    public string generateBestSellerCategoryUrlFromCategoryKey(string categoryKey)
+    {
+        string bestSellerCategoryUrl = "";
+
+        //extracted from html:
+        //http://www.amazon.com/Best-Sellers-Appstore-Android/zgbs/mobile-apps/ref=zg_bs_nav_0
+        //others 3:
+        //http://www.amazon.com/Best-Sellers-Appstore-For-Android/zgbs/mobile-apps/ref=zg_bs_nav_0
+        //http://www.amazon.com/Best-Sellers/zgbs/mobile-apps/ref=zg_bs_nav_0
+        //http://www.amazon.com/best-sellers/zgbs/mobile-apps
+        //also work !
+
+        bestSellerCategoryUrl = "http://www.amazon.com/best-sellers/zgbs/" + categoryKey;
+
+        return bestSellerCategoryUrl;
+    }
+
+    /*
+     * [Function]
+     * from amazon Bes Seller url extract category
+     * [Input]
+     * http://www.amazon.com/Best-Sellers/zgbs/ref=zg_bs_tab
+     * http://www.amazon.com/Best-Sellers/zgbs
+     * [Output]
+     * categoryItem list, contains 35 main category:
+     * ...
+     * [Note]
+     */
+    public List<categoryItem> extractBestSellerCategoryList(string amazonBestSellerUrl)
+    {
+        List<categoryItem> bestSellerCategoryList = new List<categoryItem>();
+
+        //http://www.amazon.com/Best-Sellers/zgbs/ref=zg_bs_tab
+          //<ul id="zg_browseRoot">
+          //  <li> 
+          //   <span class="zg_selected"> Any Department</span>
+          //  </li> 
+          //  <ul>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/ref=zg_bs_nav_0'>Appliances</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Appstore-Android/zgbs/mobile-apps/ref=zg_bs_nav_0'>Appstore for Android</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Arts-Crafts-Sewing/zgbs/arts-crafts/ref=zg_bs_nav_0'>Arts, Crafts & Sewing</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Automotive/zgbs/automotive/ref=zg_bs_nav_0'>Automotive</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Baby/zgbs/baby-products/ref=zg_bs_nav_0'>Baby</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Beauty/zgbs/beauty/ref=zg_bs_nav_0'>Beauty</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-books-Amazon/zgbs/books/ref=zg_bs_nav_0'>Books</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-camera-photo/zgbs/photo/ref=zg_bs_nav_0'>Camera &amp; Photo</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Cell-Phones-Accessories/zgbs/wireless/ref=zg_bs_nav_0'>Cell Phones & Accessories</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Clothing/zgbs/apparel/ref=zg_bs_nav_0'>Clothing</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Computers-Accessories/zgbs/pc/ref=zg_bs_nav_0'>Computers & Accessories</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics/ref=zg_bs_nav_0'>Electronics</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Gift-Cards-Store/zgbs/gift-cards/ref=zg_bs_nav_0'>Gift Cards Store</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Grocery-Gourmet-Food/zgbs/grocery/ref=zg_bs_nav_0'>Grocery & Gourmet Food</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Health-Personal-Care/zgbs/hpc/ref=zg_bs_nav_0'>Health & Personal Care</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Home-Kitchen/zgbs/home-garden/ref=zg_bs_nav_0'>Home &amp; Kitchen</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Home-Improvement/zgbs/hi/ref=zg_bs_nav_0'>Home Improvement</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Industrial-Scientific/zgbs/industrial/ref=zg_bs_nav_0'>Industrial & Scientific</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Jewelry/zgbs/jewelry/ref=zg_bs_nav_0'>Jewelry</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Kindle-Store/zgbs/digital-text/ref=zg_bs_nav_0'>Kindle Store</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Kitchen-Dining/zgbs/kitchen/ref=zg_bs_nav_0'>Kitchen & Dining</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-MP3-Downloads/zgbs/dmusic/ref=zg_bs_nav_0'>MP3 Downloads</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Magazines/zgbs/magazines/ref=zg_bs_nav_0'>Magazines</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-movies-TV-DVD-Blu-ray/zgbs/movies-tv/ref=zg_bs_nav_0'>Movies & TV</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-music-albums/zgbs/music/ref=zg_bs_nav_0'>Music</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Musical-Instruments/zgbs/musical-instruments/ref=zg_bs_nav_0'>Musical Instruments</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Office-Products/zgbs/office-products/ref=zg_bs_nav_0'>Office Products</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Patio-Lawn-Garden/zgbs/lawn-garden/ref=zg_bs_nav_0'>Patio, Lawn & Garden</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Pet-Supplies/zgbs/pet-supplies/ref=zg_bs_nav_0'>Pet Supplies</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-shoes/zgbs/shoes/ref=zg_bs_nav_0'>Shoes</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-software/zgbs/software/ref=zg_bs_nav_0'>Software</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Sports-Outdoors/zgbs/sporting-goods/ref=zg_bs_nav_0'>Sports &amp; Outdoors</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Toys-Games/zgbs/toys-and-games/ref=zg_bs_nav_0'>Toys &amp; Games</a></li>
+          //    <li><a href='http://www.amazon.com/best-sellers-video-games/zgbs/videogames/ref=zg_bs_nav_0'>Video Games</a></li>
+          //    <li><a href='http://www.amazon.com/Best-Sellers-Watches/zgbs/watches/ref=zg_bs_nav_0'>Watches</a></li>
+          //  </ul>
+          //</li></ul>
+
+
+        string bestSellerHtml = crl.getUrlRespHtml_multiTry(amazonBestSellerUrl);
+
+        HtmlDocument htmlDoc = crl.htmlToHtmlDoc(bestSellerHtml);
+        HtmlNode rootNode = htmlDoc.DocumentNode;
+
+        HtmlNode browseRootUlNode = rootNode.SelectSingleNode("//ul[@id='zg_browseRoot']/ul");
+        if (browseRootUlNode != null)
+        {
+            //HtmlNodeCollection categoryNodeList = browseRootUlNode.SelectNodes(".//li/a[contains(@href, 'http://www.amazon.com/Best-Sellers-')]");
+            //HtmlNodeCollection categoryNodeList = browseRootUlNode.SelectNodes(".//li/a[contains(@href, 'http://www.amazon.com/Best-Sellers-') or contains(@href, 'http://www.amazon.com/best-sellers-')]");
+            HtmlNodeCollection categoryNodeList = browseRootUlNode.SelectNodes(".//li/a[contains(@href, 'http://www.amazon.com/')]");
+
+            foreach (HtmlNode categoryNode in categoryNodeList)
+            {
+                //<li><a href='http://www.amazon.com/best-sellers-camera-photo/zgbs/photo/ref=zg_bs_nav_0'>Camera &amp; Photo</a></li>
+                string categoryUrl = categoryNode.Attributes["href"].Value;//"http://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/ref=zg_bs_nav_0"
+
+                string categoryStr = categoryNode.InnerText;
+                categoryStr = HttpUtility.HtmlDecode(categoryStr);//"Appliances"
+
+                string categoryKey = "";
+                if (extractCatKeyFromBestSellerCatUrl(categoryUrl, out categoryKey))
+                {
+                    //store info
+                    categoryItem bestSellerCategoryItem = new categoryItem();
+                    bestSellerCategoryItem.Name = categoryStr; //"Appliances"
+                    bestSellerCategoryItem.Key = categoryKey; //"appliances"
+                    bestSellerCategoryItem.Url = categoryUrl; //"http://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/ref=zg_bs_nav_0"
+
+                    bestSellerCategoryList.Add(bestSellerCategoryItem);
+                }
+                else
+                {
+                    //something wrong
+                }
+            }
+        }
+        else
+        {
+            //something wrong
+        }
+
+        return bestSellerCategoryList;
+    }
+    
+    /*
+     * [Function]
+     * from category key, generate the main category url
+     * [Input]
+     * instant-video
+     * [Output]
+     * http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dinstant-video
+     * [Note]
+     */
+    public string generateMainCategoryUrlFromCategoryKey(string categoryKey)
+    {
+        string mainCategoryUrl = "";
+
+        //http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Dinstant-video&field-keywords=
+        //http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Dinstant-video
+        mainCategoryUrl = "http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3d" + HttpUtility.UrlEncode(categoryKey);
+        //"http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dinstant-video"
+
+        return mainCategoryUrl;
+    }
+
+    /*
+     * [Function]
+     * from amazon main category url extract sub category list
+     * [Input]
+     * http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dappliances
+     * [Output]
+     * sub/child categoryItem list
+     * [Note]
+     */
+    public List<categoryItem> extractSubCategoryList(string amazonMainCategoryUrl)
+    {
+        List<categoryItem> subCategoryList = new List<categoryItem>();
+
+        string respHtml = "";
+        respHtml = crl.getUrlRespHtml_multiTry(amazonMainCategoryUrl);
+
+        //http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dappliances
+        //<div id="left">
+        //   <div id="leftNav">
+        //       <div id="leftNavContainer">
+        //            <div id="refinements" data-baserh="n%3A2619525011" data-browseladder="n%3A2619525011">
+        //                <h2 >Department</h2>
+        //                <ul id="ref_2619526011" data-typeid="n" >
+        //                    <li style="margin-left: 0px">
+        //                        <strong>Appliances</strong>
+        //                    </li>
+        //                    <!-- A non-null numberVisibleValues indicates that we should put the non-visible items behind a "See more..." expando, but only if there are enough values available to be hidden. -->
+        //                    <li style="margin-left: -2px">
+        //                        <a href="/s/ref=lp_2619525011_nr_n_0?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A3737671&amp;bbn=2619526011&amp;ie=UTF8&amp;qid=1371180383&amp;rnid=2619526011">
+        //                            <span class="refinementLink">Air Conditioners</span><span class="narrowValue">&nbsp;(8,704)</span>
+        //                        </a>
+        //                    </li>
+        //            ............
+        //                    <li style="margin-left: -2px">
+        //                        <a href="/s/ref=lp_2619525011_nr_n_28?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A2383576011&amp;bbn=2619526011&amp;ie=UTF8&amp;qid=1371180383&amp;rnid=2619526011">
+        //                             <span class="refinementLink">Washers &amp; Dryers</span><span class="narrowValue">&nbsp;(1,390)</span>
+        //                        </a>
+        //                    </li>
+        //                    <li style="margin-left: -2px">
+        //                        <a href="/s/ref=lp_2619525011_nr_n_29?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A3741521&amp;bbn=2619526011&amp;ie=UTF8&amp;qid=1371180383&amp;rnid=2619526011">
+        //                            <span class="refinementLink">Wine Cellars</span><span class="narrowValue">&nbsp;(3,761)</span>
+        //                        </a>
+        //                    </li>
+        //                </ul>
+
+        HtmlAgilityPack.HtmlDocument htmlDoc = crl.htmlToHtmlDoc(respHtml);
+        HtmlNode refinementsNode = htmlDoc.DocumentNode.SelectSingleNode("//div[@id='refinements' and @data-baserh and @data-browseladder]");
+
+        HtmlNodeCollection subCategoryNodeList = refinementsNode.SelectNodes("//ul[@id and @data-typeid]/li/a");
+        if ((subCategoryNodeList != null) && (subCategoryNodeList.Count > 0))
+        {
+            foreach (HtmlNode subCatNode in subCategoryNodeList)
+            {
+                string subCatUrl = subCatNode.Attributes["href"].Value; //"/s/ref=lp_2619525011_nr_n_0?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A3737671&amp;bbn=2619526011&amp;ie=UTF8&amp;qid=1371183419&amp;rnid=2619526011"
+                subCatUrl = constAmazonDomainUrl + subCatUrl; //"http://www.amazon.com/s/ref=lp_2619525011_nr_n_0?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A3737671&amp;bbn=2619526011&amp;ie=UTF8&amp;qid=1371183419&amp;rnid=2619526011"
+                subCatUrl = HttpUtility.HtmlDecode(subCatUrl); //"http://www.amazon.com/s/ref=lp_2619525011_nr_n_0?rh=n%3A2619525011%2Cn%3A%212619526011%2Cn%3A3737671&bbn=2619526011&ie=UTF8&qid=1371183419&rnid=2619526011"
+
+                HtmlNode refinementLinkNode = subCatNode.SelectSingleNode("./span[@class='refinementLink']");
+                if (refinementLinkNode != null)
+                {
+                    string subCatName = refinementLinkNode.InnerText; //"Air Conditioners"
+                    subCatName = subCatName.Trim();
+                    subCatName = HttpUtility.HtmlDecode(subCatName); //"Air Conditioners"
+
+                    //store info
+                    categoryItem singleSubCatItem = new categoryItem();
+                    singleSubCatItem.Name = subCatName;
+                    singleSubCatItem.Key = ""; // sub category no key
+                    singleSubCatItem.Url = subCatUrl;
+
+                    subCategoryList.Add(singleSubCatItem);
+                }
+                else
+                {
+                    //something wrong
+                }
+            }
+        }
+        else
+        {
+            //something wrong
+            gLogger.Debug("can not find subCategoryNodeList");
+        }
+
+        return subCategoryList;
+    }
+
+
+    /*
+     * [Function]
      * from amazon main url extract main category
      * [Input]
      * http://www.amazon.com/ref=nb_sb_noss_null
@@ -1615,8 +2192,8 @@ public class crifanLibAmazon
                 //...
                 //<option value="search-alias=watches">Watches</option>
                 string searchValue = singleOptionNode.Attributes["value"].Value; //search-alias=instant-video
-                string keyValue = ""; //instant-video
-                if (crl.extractSingleStr(@"=([a-z\-]+)", searchValue, out keyValue))
+                string categoryKey = ""; //instant-video
+                if (crl.extractSingleStr(@"=([a-z\-]+)", searchValue, out categoryKey))
                 {
                     //instant-video
                     //appliances
@@ -1628,21 +2205,23 @@ public class crifanLibAmazon
                     //store info
                     categoryItem singleCategoryItem = new categoryItem();
                     singleCategoryItem.Name = generalCategory;
-                    singleCategoryItem.Key = keyValue;
-                    //singleCategoryItem.name = generalCategory;
-                    //singleCategoryItem.url = singleCategoryUrl;
+                    singleCategoryItem.Key = categoryKey;
+                    singleCategoryItem.Url = generateMainCategoryUrlFromCategoryKey(categoryKey);
+
                     //add to list
                     mainCategoryList.Add(singleCategoryItem);
                 }
                 else
                 {
-
+                    //something wrong
+                    gLogger.Debug(String.Format("can not extart main category key for html node {0} for {1}",singleOptionNode.ToString(),amazonMainUrl));
                 }
             }
         }
         else
         {
- 
+            //something wrong
+            gLogger.Debug("can not find categorySelectNode for " + amazonMainUrl);
         }
 
         return mainCategoryList;
@@ -2051,6 +2630,134 @@ public class crifanLibAmazon
         return isFoundDescription;
     }
 
+
+    /*
+     * [Function]
+     * extract custom large image url list from item custom url
+     * [Input]
+     * http://www.amazon.com/gp/customer-media/product-gallery/B003C9HUDQ
+     * [Output]
+     * large image url list
+     * 
+     * [Note]
+     * 1. normally, only have 5 pic, some more:7/10/..., somm less: 1/2/...
+     */
+    public List<string> extractCustomImageUrlList(string customImageUrl)
+    {
+        List<string> customImageList = new List<string>();
+
+        string productHtml = crl.getUrlRespHtml_multiTry(customImageUrl);
+
+        //http://www.amazon.com/gp/customer-media/product-gallery/B003C9HUDQ
+
+        //  amznJQ.available("cmuMediaGalleryController", function () {
+        //    var state = {
+        //   "pageUrl" : "/gp/customer-media/product-gallery/B003C9HUDQ?ie=UTF8&*Version*=1&*entries*=0",
+        //   "page" : 0,
+        //   "currentImage" : {
+        //      "width" : 500,
+        //      "authorID" : "A1NSXYQFE2410F",
+        //      "isremote" : 0,
+        //      "authorName" : "cknudson",
+        //      "uploadDate" : "5/30/12",
+        //      "mediaObjectID" : null,
+        //      "isSlateImage" : 0,
+        //      "height" : 375,
+        //      "caption" : "Used along with Umbra Dragonflies as a memorial wall for our son.",
+        //      "helpfulVotes" : 17,
+        //      "annotationsCount" : 0,
+        //      "url" : "http://ecx.images-amazon.com/images/I/610FYc8JxIL.jpg",
+        //      "id" : "mo3ML9P6YYWJBCI",
+        //      "totalVotes" : 17
+        //   },
+        //   "anchorTypeID" : "ASIN",
+        //   "imageList" : [
+        //      {
+        //         "width" : 500,
+        //         "isremote" : 0,
+        //         "annotationsCount" : 0,
+        //         "isSlateImage" : 0,
+        //         "url" : "http://ecx.images-amazon.com/images/I/610FYc8JxIL.jpg",
+        //         "id" : "mo3ML9P6YYWJBCI",
+        //         "height" : 375
+        //      },
+        //      {
+        //         "width" : 500,
+        //         "isremote" : 0,
+        //         "annotationsCount" : 0,
+        //         "isSlateImage" : 0,
+        //         "url" : "http://ecx.images-amazon.com/images/I/51boViyAS2L.jpg",
+        //         "id" : "mo3SK1IKQNFENLP",
+        //         "height" : 476
+        //      },
+        //      {
+        //         "width" : 500,
+        //         "isremote" : 0,
+        //         "annotationsCount" : 0,
+        //         "isSlateImage" : 0,
+        //         "url" : "http://ecx.images-amazon.com/images/I/51sadTKDhOL.jpg",
+        //         "id" : "mo3R31OJGG2XQ6S",
+        //         "height" : 282
+        //      },
+        //      {
+        //         "width" : 500,
+        //         "isremote" : 0,
+        //         "annotationsCount" : 0,
+        //         "isSlateImage" : 0,
+        //         "url" : "http://ecx.images-amazon.com/images/I/51Z4m%2BvmMdL.jpg",
+        //         "id" : "mo1U55IBOPNVGLA",
+        //         "height" : 282
+        //      }
+        //   ],
+        //   "anchorID" : "B003C9HUDQ",
+        //   "countAllRemoteImages" : 0,
+        //   "totalPages" : 1,
+        //   "application" : "cmu",
+        //   "currentImagePage" : 0,
+        //   "pageSize" : 7,
+        //   "sort" : "rating",
+        //   "currentImageNumber" : 0,
+        //   "mediaType" : null,
+        //   "totalImages" : 4,
+        //   "currentImagePageOffset" : 0
+        //};
+
+        string strMediaGalleryStateJson = "";
+        if (crl.extractSingleStr(@"amznJQ\.available\(""cmuMediaGalleryController"",\s*function\s*\(\s*\)\s*\{\s*var\s+state\s*=\s*(\{.+?})\s*;\s*var\s+config\s*=", productHtml, out strMediaGalleryStateJson, RegexOptions.Singleline))
+        {
+            Dictionary<string, Object> stateDict = (Dictionary<string, Object>)crl.jsonToDict(strMediaGalleryStateJson);
+
+            if ((stateDict != null) && (stateDict.ContainsKey("imageList")))
+            {
+                Object imageListObj = null;
+                if (stateDict.TryGetValue("imageList", out imageListObj))
+                {
+                    //List<Dictionary<string, Object>> imageDictList = (List<Dictionary<string, Object>>)imageListObj;
+                    Object[] imageObjArr = (Object[])imageListObj;
+                    foreach (Object imageDictObj in imageObjArr)
+                    {
+                        Dictionary<string, Object> imageDict = (Dictionary<string, Object>)imageDictObj;
+                        Object urlObj = null;
+                        if (imageDict.TryGetValue("url", out urlObj))
+                        {
+                            string url = urlObj.ToString();
+                            customImageList.Add(url);
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            //special: no custom image
+            //http://www.amazon.com/gp/customer-media/product-gallery/B0009IQXFO
+
+            gLogger.Debug("Not found cmuMediaGalleryController state json for " + customImageUrl);
+        }
+
+        return customImageList;
+    }
+
     /*
      * [Function]
      * from html extract image url list
@@ -2347,6 +3054,8 @@ public class crifanLibAmazon
 
             //3. get ["preplayImages"]["L"]
             imageUrlList = new string[dictList.Length];
+            crl.emptyStringArray(imageUrlList);
+
             for (int idx = 0; idx < dictList.Length; idx++)
             {
                 Dictionary<string, Object> eachImgDict = (Dictionary<string, Object>)dictList[idx];
@@ -2430,6 +3139,11 @@ public class crifanLibAmazon
         //var colorImages = {"initial":[{"large":"http://ecx.images-amazon.com/images/I/41FYj3wTIGL.jpg","landing":["http://ecx.images-amazon.com/images/I/41FYj3wTIGL._SX300_.jpg"],"hiRes":"http://ecx.images-amazon.com/images/I/71e3D5%2BGH6L._SL1451_.jpg","thumb":"http://ecx.images-amazon.com/images/I/41FYj3wTIGL._SS40_.jpg","main":["http://ecx.images-amazon.com/images/I/41FYj3wTIGL._SX355_.jpg","http://ecx.images-amazon.com/images/I/41FYj3wTIGL._SX450_.jpg"]}]};
         //only contain 1 pic, and remain 4 pic in
         //data["customerImages"] = eval('[{"thumb":"http://ecx.images-amazon.com/images/I/71WzNwqiuzL._SS40_.jpg","hasAnnotations":0,"main":["http://ecx.images-amazon.com/images/I/71WzNwqiuzL._SY355_.jpg","http://ecx.images-amazon.com/images/I/71WzNwqiuzL._SY450_.jpg"],"caption":"Customer image from <a href=\\"http://www.amazon.com/gp/customer-media/customer-gallery/AJYXB96C8CNKF\\">SLC Snowdrops</a>","holderId":"holdermo1SS25OWPE9J72","id":"mo1SS25OWPE9J72","imageLink":"/gp/customer-media/product-gallery/B0007Y9WHQ/ref=cm_ciu_pdp_images_0?ie=UTF8&index=0","isCIU":1},{"thumb":"http://ecx.images-amazon.com/images/I/61alWpZLZrL._SS40_.jpg","hasAnnotations":0,"main":["http://ecx.images-amazon.com/images/I/61alWpZLZrL._SX355_.jpg","http://ecx.images-amazon.com/images/I/61alWpZLZrL._SX450_.jpg"],"caption":"Customer image from <a href=\\"http://www.amazon.com/gp/customer-media/customer-gallery/A341XN0IQ6P3KY\\">PizzaGurl \\"PizzaGurl...</a>","holderId":"holdermo15GHS6TNJUSJE","id":"mo15GHS6TNJUSJE","imageLink":"/gp/customer-media/product-gallery/B0007Y9WHQ/ref=cm_ciu_pdp_images_1?ie=UTF8&index=1","isCIU":1},{"thumb":"http://ecx.images-amazon.com/images/I/61F-RaRkNhL._SS40_.jpg","hasAnnotations":0,"main":["http://ecx.images-amazon.com/images/I/61F-RaRkNhL._SY355_.jpg","http://ecx.images-amazon.com/images/I/61F-RaRkNhL._SY450_.jpg"],"caption":"Customer image from <a href=\\"http://www.amazon.com/gp/customer-media/customer-gallery/A341XN0IQ6P3KY\\">PizzaGurl \\"PizzaGurl...</a>","holderId":"holdermo8778635KTPBK","id":"mo8778635KTPBK","imageLink":"/gp/customer-media/product-gallery/B0007Y9WHQ/ref=cm_ciu_pdp_images_2?ie=UTF8&index=2","isCIU":1},{"thumb":"http://ecx.images-amazon.com/images/I/61JhimJJrjL._SS40_.jpg","hasAnnotations":0,"main":["http://ecx.images-amazon.com/images/I/61JhimJJrjL._SX355_.jpg","http://ecx.images-amazon.com/images/I/61JhimJJrjL._SX450_.jpg"],"caption":"Customer image from <a href=\\"http://www.amazon.com/gp/customer-media/customer-gallery/A1KIIDMM71T6I0\\">Meesh</a>","holderId":"holdermo1P3119KUYN8C2","id":"mo1P3119KUYN8C2","imageLink":"/gp/customer-media/product-gallery/B0007Y9WHQ/ref=cm_ciu_pdp_images_3?ie=UTF8&index=3","isCIU":1}]');
+
+        //special
+        //http://www.amazon.com/Glad-Kitchen-Drawstring-Garbage-Gallon/dp/B005GSYXHW/ref=lp_1055398_1_6?ie=UTF8&qid=1370620379&sr=1-6
+        //data["customerImages"] = eval('[]');
+
         string customerImagesJson = "";
         if (crl.extractSingleStr(@"data\[""customerImages""\]\s*=\s*eval\('(.+?)'\);", productHtml, out customerImagesJson))
         {
@@ -2525,7 +3239,15 @@ public class crifanLibAmazon
                     Object[] mainUrlList = (Object[])mainListObj;
                     if (mainUrlList.Length >= 2)
                     {
-                        //second one is large img url
+                        //http://www.amazon.com/gp/product/B003BIG0DO/ref=twister_B000AST3AK?ie=UTF8&psc=1
+                        //here have 5 item
+                        //0:                http://ecx.images-amazon.com/images/I/5135SdQWHxL._SY445_.jpg
+                        //1-4: all same:    http://ecx.images-amazon.com/images/I/5135SdQWHxL.jpg
+
+                        //http://www.amazon.com/Maytag-UKF8001-Refrigerator-Filter-1-Pack/dp/B001XW8KW4/ref=lp_1055398_1_7?ie=UTF8&qid=1370620379&sr=1-7
+                        //all 5 is: http://ecx.images-amazon.com/images/I/31Up08C%2BZpL.jpg
+
+                        //normal: second one is large img url
                         string largeImgUrl = mainUrlList[1].ToString(); //http://ecx.images-amazon.com/images/I/71WzNwqiuzL._SY450_.jpg
                         imageUrlList[startImgListIdx + dictListIdx] = largeImgUrl;
                     }
@@ -2543,6 +3265,4 @@ public class crifanLibAmazon
 
         return imageUrlList;
     }
-
-
 }
