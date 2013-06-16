@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v6.5
+ * v6.9
  * 
  * [update]
- * 2013-06-07
+ * 2013-06-16
  * 
  * [Author]
  * Crifan Li
@@ -23,8 +23,13 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
- * [v6.5]
+ * [v6.9]
+ * 1. add openFileDirectly, htmlRemoveTag
+ * 2. add formatString
+ * 
+ * [v6.6]
  * 1. change byte buffer alloc scenario for downloadFile
+ * 2. add emptyStringArray
  * 
  * [v6.4]
  * 1. add jsonToDict
@@ -99,7 +104,8 @@
 #define USE_GETURLRESPONSE_BW //for getUrlResponse use backgroundworker version
 //#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
 #define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
-//#define USE_DATAGRIDVIEW
+#define USE_DATAGRIDVIEW
+#define USE_JSON
 
 
 using System;
@@ -116,7 +122,10 @@ using System.Reflection;
 using System.Diagnostics;
 using System.ComponentModel;
 using System.Globalization;
-using System.Web.Script.Serialization; // need: .NET 3.5+
+
+#if USE_JSON
+using System.Web.Script.Serialization; // json lib, need: .NET 3.5+
+#endif
 
 #if USE_HTML_PARSER_SGML
 using Sgml;
@@ -327,6 +336,38 @@ public class crifanLib
     /*********************************************************************/
     /* String */
     /*********************************************************************/
+
+    //input: [4] Valid: B0009IQZFM
+    //output: ============================ [4] Valid: B0009IQZFM =============================
+    public string formatString(string strToFormat, char cPaddingChar = '*', int iTotalWidth = 80)
+    {
+        //auto added space
+        strToFormat = " " + strToFormat + " "; //" [4] Valid: B0009IQZFM "
+
+        //1. padding left
+        int iPaddingLen = (iTotalWidth - strToFormat.Length)/2;
+        int iLefTotalLen = iPaddingLen + strToFormat.Length;
+        string strLefPadded = strToFormat.PadLeft(iLefTotalLen, cPaddingChar); //"============================ [4] Valid: B0009IQZFM "
+        //2. padding right
+        string strFormatted = strLefPadded.PadRight(iTotalWidth, cPaddingChar); //"============================ [4] Valid: B0009IQZFM ============================="
+        
+        return strFormatted;
+    }
+
+    //init the string array to empty
+    public string[] emptyStringArray(string[] strArr)
+    {
+        if (strArr != null)
+        {
+            for (int idx = 0; idx < strArr.Length; idx++)
+            {
+                strArr[idx] = String.Empty;
+                //strArr[idx] = "";
+            }
+        }
+
+        return strArr;
+    }
 
     // encode "!" to "%21"
     public string encodeExclamationMark(string inputStr)
@@ -1571,7 +1612,12 @@ public class crifanLib
                 sr = new StreamReader(resp.GetResponseStream());
             }
             
-            respHtml = sr.ReadToEnd();
+            //respHtml = sr.ReadToEnd();
+            while (!sr.EndOfStream)
+            {
+                respHtml = respHtml + sr.ReadLine();
+            }
+
             sr.Close();
 
             resp.Close();
@@ -1596,6 +1642,10 @@ public class crifanLib
             respHtml = getUrlRespHtml(url, headerDict, charset, postDict, timeout, postDataStr);
             if (respHtml != "")
                 break;
+            else
+            {
+ 
+            }
         }
 
         return respHtml;
@@ -2277,7 +2327,14 @@ public class crifanLib
     {
         System.Diagnostics.Process.Start("Explorer.exe", "/select," + fullFilename);
     }
-    
+
+    //open file/url/...
+    public void openFileDirectly(string fullFilename)
+    {
+        System.Diagnostics.Process.Start(fullFilename);
+    }
+
+
     /*********************************************************************/
     /* Screen */
     /*********************************************************************/
@@ -2481,6 +2538,50 @@ public class crifanLib
 
         return afterRemoved;
     }
+
+
+    /*
+     * [Function]
+     * remove html tag, retain html content
+     * [Input]
+     * html, with tag
+     * 
+     * [Output]
+     * pure content, no html tag
+     * 
+     * [Note]
+     */
+    public string htmlRemoveTag(string html)
+    {
+        HtmlAgilityPack.HtmlDocument htmlDoc = new HtmlAgilityPack.HtmlDocument();
+        htmlDoc.LoadHtml(html);
+        if (htmlDoc == null)
+        {
+            return "";
+        }
+
+        // 1. remove all comments
+        //(1)get all comment nodes using XPATH
+        HtmlNodeCollection commentNodeList = htmlDoc.DocumentNode.SelectNodes("//comment()");
+        if(commentNodeList != null)
+        {
+            foreach (HtmlNode comment in commentNodeList)
+            {
+                //(2) remove comment node itself
+                comment.ParentNode.RemoveChild(comment);
+            }
+        }
+
+        //2. get all content
+        string filteredHtml = "";
+        foreach (var node in htmlDoc.DocumentNode.ChildNodes)
+        {
+            filteredHtml += node.InnerText;
+        }
+
+        return filteredHtml;
+    }
+
     #endif
 
     //example code for html parse
@@ -2617,7 +2718,8 @@ public class crifanLib
         }
     }
     
-    private void _releaseObject(object obj)
+    //release object
+    public void releaseObject(object obj)
     {
         try
         {
@@ -2627,7 +2729,7 @@ public class crifanLib
         catch (Exception ex)
         {
             obj = null;
-            MessageBox.Show("Exception Occured while releasing object " + ex.ToString());
+            //MessageBox.Show("Exception Occured while releasing object " + ex.ToString());
         }
         finally
         {
@@ -2741,9 +2843,9 @@ public class crifanLib
         xlWorkBook.Close(true, misValue, misValue);
         xlApp.Quit();
 
-        _releaseObject(xlWorkSheet);
-        _releaseObject(xlWorkBook);
-        _releaseObject(xlApp);
+        releaseObject(xlWorkSheet);
+        releaseObject(xlWorkBook);
+        releaseObject(xlApp);
     }
 
     public void dgvExportToCsv(DataGridView dgvValue,
@@ -2840,7 +2942,7 @@ public class crifanLib
     /*********************************************************************/
     /* JSON */
     /*********************************************************************/
-
+#if USE_JSON
     /*
      * [Function]
      * convert json string into dictionary object
@@ -2859,4 +2961,6 @@ public class crifanLib
 
         return dictObj;
     }
+#endif
+
 }
