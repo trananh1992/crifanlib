@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v6.9
+ * v7.0
  * 
  * [update]
- * 2013-06-16
+ * 2013-06-20
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v7.0]
+ * 1. add findRootTreeNode
+ * 
  * [v6.9]
  * 1. add openFileDirectly, htmlRemoveTag
  * 2. add formatString
@@ -234,6 +237,44 @@ public class crifanLib
 
 
     /*------------------------Public Functions-------------------------------*/
+
+    /*********************************************************************/
+    /* TreeView/TreeNode */
+    /*********************************************************************/
+
+    /*
+     * [Function]
+     * find root TreeNode of current TreeNode
+     * [Input]
+     * some TreeNode
+     * 
+     * [Output]
+     * root TreeNode of input TreeNode
+     * 
+     * [Note]
+     */
+    public TreeNode findRootTreeNode(TreeNode curTreeNode)
+    {
+        TreeNode rootTreeNode = curTreeNode.Parent;
+
+        if (rootTreeNode == null)
+        {
+            //root parent is null
+            rootTreeNode = curTreeNode;
+        }
+        else
+        {
+            //child parent is not null
+            while (rootTreeNode.Parent != null)
+            {
+                rootTreeNode = rootTreeNode.Parent;
+            }
+        }
+
+        return rootTreeNode;
+    }
+
+
     /*********************************************************************/
     /* Unit conversion
     /*********************************************************************/
@@ -537,7 +578,7 @@ public class crifanLib
     }
 
     /*********************************************************************/
-    /* cookie */
+    /* Cookie */
     /*********************************************************************/
 
     //extrat the Host from input url
@@ -1631,7 +1672,7 @@ public class crifanLib
                                     Dictionary<string, string> headerDict = null,
                                     string charset = null,
                                     Dictionary<string, string> postDict = null,
-                                    int timeout = 20*1000,/* defaul use timeout to 20*1000ms */
+                                    int timeout = 30*1000,/* defaul use timeout to 30*1000ms */
                                     string postDataStr = "",
                                     int maxTryNum = 5)                                
     {
@@ -2553,30 +2594,34 @@ public class crifanLib
      */
     public string htmlRemoveTag(string html)
     {
-        HtmlAgilityPack.HtmlDocument htmlDoc = new HtmlAgilityPack.HtmlDocument();
-        htmlDoc.LoadHtml(html);
-        if (htmlDoc == null)
-        {
-            return "";
-        }
-
-        // 1. remove all comments
-        //(1)get all comment nodes using XPATH
-        HtmlNodeCollection commentNodeList = htmlDoc.DocumentNode.SelectNodes("//comment()");
-        if(commentNodeList != null)
-        {
-            foreach (HtmlNode comment in commentNodeList)
-            {
-                //(2) remove comment node itself
-                comment.ParentNode.RemoveChild(comment);
-            }
-        }
-
-        //2. get all content
         string filteredHtml = "";
-        foreach (var node in htmlDoc.DocumentNode.ChildNodes)
+
+        if (!string.IsNullOrEmpty(html))
         {
-            filteredHtml += node.InnerText;
+            HtmlAgilityPack.HtmlDocument htmlDoc = new HtmlAgilityPack.HtmlDocument();
+            htmlDoc.LoadHtml(html);
+            if (htmlDoc == null)
+            {
+                return "";
+            }
+
+            // 1. remove all comments
+            //(1)get all comment nodes using XPATH
+            HtmlNodeCollection commentNodeList = htmlDoc.DocumentNode.SelectNodes("//comment()");
+            if (commentNodeList != null)
+            {
+                foreach (HtmlNode comment in commentNodeList)
+                {
+                    //(2) remove comment node itself
+                    comment.ParentNode.RemoveChild(comment);
+                }
+            }
+
+            //2. get all content
+            foreach (var node in htmlDoc.DocumentNode.ChildNodes)
+            {
+                filteredHtml += node.InnerText;
+            }
         }
 
         return filteredHtml;
