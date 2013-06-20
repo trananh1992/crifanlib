@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v1.0
+ * v1.4
  * 
  * [update]
- * 2013-06-15
+ * 2013-06-19
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,13 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v1.4]
+ * 1. update to awsGetBrowseNodeLookupResp
+ * 2. added extractSingleBrowseNode, extractBrowseNodeList
+ * 
+ * [v1.1]
+ * 1. many updates
+ * 
  * [v1.0]
  * 1. move from crifanLibAmazon.cs to here
  */
@@ -76,36 +83,54 @@ public class crifanLibAws
     private const string constStrRequestUri = "/onca/xml";
     private const string constStrRequestMethod = "GET";
 
-    //find global defaut (current using) logger
-    public crifanLibAws()
-    {
-        //init something
-        crl = new crifanLib();
 
-        gLogger = LogManager.GetLogger("");
-    }
-
-    //specify your logger
-    public crifanLibAws(Logger logger)
-    {
-        //init something
-        crl = new crifanLib();
-        
-        gLogger = logger;
-    }
-    
     //http://docs.aws.amazon.com/AWSECommerceService/latest/DG/BrowseNodeIDs.html
-    public struct awsBrowserNode
+    //http://docs.aws.amazon.com/AWSECommerceService/latest/DG/BrowseNodeLookup.html
+    public struct awsBrowseNode
     {
-        public string Name { get; set; } //Appliances
-        public string Id { get; set; }   //2619525011
+        public string   Name            { get; set; }   //Appliances
+        public string   BrowseNodeId    { get; set; }   //2619525011
+        public string   IsCategoryRoot  { get; set; }   //1, can be null
+    };
+
+    public struct awsBrowseNodeLookupResp
+    {
+        //<BrowseNode>
+        //    <BrowseNodeId>10304191</BrowseNodeId>
+        //    <Name>Categories</Name>
+        //    <IsCategoryRoot>1</IsCategoryRoot>
+        //    <Ancestors>
+        //        <BrowseNode>
+        //            <BrowseNodeId>10272111</BrowseNodeId>
+        //            <Name>Everything Else</Name>
+        //        </BrowseNode>
+        //    </Ancestors>
+        //</BrowseNode>
 
         //<BrowseNode>
-        //  <BrowseNodeId>2619526011</BrowseNodeId>
-        //  <Name>Categories</Name>
-        //  <IsCategoryRoot>1</IsCategoryRoot>
+        //    <BrowseNodeId>2619525011</BrowseNodeId>
+        //    <Name>Appliances</Name>
+        //    <Children>
+        //        <BrowseNode>
+        //            <BrowseNodeId>2619526011</BrowseNodeId>
+        //            <Name>Categories</Name>
+        //            <IsCategoryRoot>1</IsCategoryRoot>
+        //        </BrowseNode>
+        //        <BrowseNode>
+        //            <BrowseNodeId>2645269011</BrowseNodeId>
+        //            <Name>Featured Categories</Name>
+        //        </BrowseNode>
+        //        <BrowseNode>
+        //            <BrowseNodeId>2645372011</BrowseNodeId>
+        //            <Name>Self Service</Name>
+        //        </BrowseNode>
+        //    </Children>
         //</BrowseNode>
-        public bool IsCategoryRoot { get; set; }
+
+        //public awsBrowseNode selfBrowseNode { get; set; } //self's BrowseNode
+        public awsBrowseNode selfBrowseNode; //self's BrowseNode
+        public List<awsBrowseNode> Ancestors { get; set; }  // can be null
+        public List<awsBrowseNode> Children { get; set; }   // can be null
     };
 
     public struct awsSearchResultItem
@@ -244,9 +269,45 @@ public class crifanLibAws
 
     };
 
-    /****************************** AWS ********************************/
+    //find global defaut (current using) logger
+    public crifanLibAws()
+    {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
 
+        //init something
+        crl = new crifanLib();
 
+        gLogger = LogManager.GetLogger("");
+    }
+
+    //specify your logger
+    public crifanLibAws(Logger logger)
+    {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
+
+        //init something
+        crl = new crifanLib();
+        
+        gLogger = logger;
+    }
+
+    //!!! for load embedded dll: (2) implement this handler
+    System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    {
+        string dllName = args.Name.Contains(",") ? args.Name.Substring(0, args.Name.IndexOf(',')) : args.Name.Replace(".dll", "");
+
+        dllName = dllName.Replace(".", "_");
+
+        if (dllName.EndsWith("_resources")) return null;
+
+        System.Resources.ResourceManager rm = new System.Resources.ResourceManager(GetType().Namespace + ".Properties.Resources", System.Reflection.Assembly.GetExecutingAssembly());
+
+        byte[] bytes = (byte[])rm.GetObject(dllName);
+
+        return System.Reflection.Assembly.Load(bytes);
+    }
 
     /********************************* AWS API *******************************/
 
@@ -571,7 +632,8 @@ public class crifanLibAws
     {
         XmlDocument xmlDocNoXmlns = new XmlDocument();
 
-        string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum:20);
+        //string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum:20);
+        string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum: 10);
         string xmlnsStr = " xmlns=\"" + awsNamespace + "\""; //"http://webservices.amazon.com/AWSECommerceService/2011-08-01"
         string xmlNoXmlns = respHtml.Replace(xmlnsStr, "");
         if (!string.IsNullOrEmpty(xmlNoXmlns))
@@ -626,7 +688,134 @@ public class crifanLibAws
 
     /*
      * [Function]
-     * aws browser
+     * extract browse node info
+     * [Input]
+     * an xml node, contain browser node info
+     * eg:
+     *  <BrowseNode>
+     *      <BrowseNodeId>10272111</BrowseNodeId>
+     *      <Name>Everything Else</Name>
+     *  </BrowseNode>
+     *  
+     * <BrowseNode>
+     *      <BrowseNodeId>10304191</BrowseNodeId>
+     *      <Name>Categories</Name>
+     *      <IsCategoryRoot>1</IsCategoryRoot>
+     * 
+     * [Output]
+     * extracted awsBrowseNode
+     * 
+     * [Note]
+     */
+    public awsBrowseNode extractSingleBrowseNode(XmlNode curBrowseNode, bool bAutoHtmlDecode = true)
+    {
+        awsBrowseNode extractedBrowseNode = new awsBrowseNode();
+        
+        //1. BrowseNodeId
+        XmlNode browseNodeIdNode            = curBrowseNode.SelectSingleNode("./BrowseNodeId");
+        extractedBrowseNode.BrowseNodeId    = browseNodeIdNode.InnerText;
+        if(bAutoHtmlDecode)
+        {
+            //special:
+            //<BrowseNode>
+            //    <BrowseNodeId>3741181</BrowseNodeId>
+            //    <Name>Parts &amp; Accessories</Name>
+            //</BrowseNode>
+
+            //note: it seems that, when xml.Load, then already do this html decode
+            //-> here already got html decoded content 
+            //-> no need do html decode again 
+            //-> here still do html code 
+            //-> just to makesure is html decoded
+
+            extractedBrowseNode.BrowseNodeId = HttpUtility.HtmlDecode(extractedBrowseNode.BrowseNodeId);
+        }
+
+        //1. Name
+        XmlNode nameNode            = curBrowseNode.SelectSingleNode("./Name");
+        extractedBrowseNode.Name    = nameNode.InnerText;
+        if(bAutoHtmlDecode)
+        {
+            extractedBrowseNode.Name = HttpUtility.HtmlDecode(extractedBrowseNode.Name);
+        }
+
+        //3. IsCategoryRoot
+        XmlNode isCategoryRootNode  = curBrowseNode.SelectSingleNode("./IsCategoryRoot");
+        if(isCategoryRootNode != null)
+        {
+            extractedBrowseNode.IsCategoryRoot = isCategoryRootNode.InnerText;
+
+            if(bAutoHtmlDecode)
+            {
+                extractedBrowseNode.IsCategoryRoot = HttpUtility.HtmlDecode(extractedBrowseNode.IsCategoryRoot);
+            }
+        }
+
+        return extractedBrowseNode;
+    }
+
+
+    /*
+     * [Function]
+     * extract browse node list
+     * [Input]
+     * an xml node, can be Children or Ancestors, contain browser node list
+     * eg:
+     * <Children>
+     *     <BrowseNode>
+     *         <BrowseNodeId>2619526011</BrowseNodeId>
+     *         <Name>Categories</Name>
+     *         <IsCategoryRoot>1</IsCategoryRoot>
+     *     </BrowseNode>
+     *     <BrowseNode>
+     *         <BrowseNodeId>2645269011</BrowseNodeId>
+     *         <Name>Featured Categories</Name>
+     *     </BrowseNode>
+     *     <BrowseNode>
+     *         <BrowseNodeId>2645372011</BrowseNodeId>
+     *         <Name>Self Service</Name>
+     *     </BrowseNode>
+     * </Children>
+     *  
+     * <Ancestors>
+     *     <BrowseNode>
+     *         <BrowseNodeId>10272111</BrowseNodeId>
+     *         <Name>Everything Else</Name>
+     *     </BrowseNode>
+     * </Ancestors>
+     * 
+     * [Output]
+     * extracted awsBrowseNode list
+     * 
+     * [Note]
+     */
+    public List<awsBrowseNode> extractBrowseNodeList(XmlNode curParentLevelNode)
+    {
+        List<awsBrowseNode> extractedBrowseNodeList = new List<awsBrowseNode>();
+
+        if(curParentLevelNode != null)
+        {
+            XmlNodeList subBrowseNodeList = curParentLevelNode.SelectNodes("./BrowseNode");
+            if((subBrowseNodeList != null) && (subBrowseNodeList.Count > 0))
+            {
+                foreach(XmlNode subBrowseNode in subBrowseNodeList)
+                {
+                    awsBrowseNode eachSubBrowseNode = extractSingleBrowseNode(subBrowseNode);
+                    extractedBrowseNodeList.Add(eachSubBrowseNode);
+                }
+            }
+        }
+        else
+        {
+            extractedBrowseNodeList = null;
+        }
+
+        return extractedBrowseNodeList;
+    }
+
+    /*
+     * [Function]
+     * aws browse node id
      * [Input]
      * browser node id
      * eg:
@@ -634,20 +823,19 @@ public class crifanLibAws
      * sub category: 3737671
      * 
      * [Output]
-     * child browser node list
+     * BrowseNodeLookup responsed BrowseNodeInfo
      * 
      * [Note]
-     * 1.tmp not return Ancestors
      */
-    public List<awsBrowserNode> awsGetSubBrowserNodeList(string parentBrowserNodeId)
+    public awsBrowseNodeLookupResp awsGetBrowseNodeLookupResp(string currentBrowseNodeId)
     {
-        List<awsBrowserNode> browserNodeList = new List<awsBrowserNode>();
+        awsBrowseNodeLookupResp browseNodeLookupResp = new awsBrowseNodeLookupResp();
 
         IDictionary<string, string> reqDict = new Dictionary<string, String>();
         reqDict["Service"] = "AWSECommerceService";
         reqDict["Version"] = awsApiVersion;
         reqDict["Operation"] = "BrowseNodeLookup";
-        reqDict["BrowseNodeId"] = parentBrowserNodeId;
+        reqDict["BrowseNodeId"] = currentBrowseNodeId;
         reqDict["ResponseGroup"] = "BrowseNodeInfo";
 
         String awsReqUrl = Sign(reqDict);
@@ -686,6 +874,28 @@ public class crifanLibAws
         //    </BrowseNodes>
         //</BrowseNodeLookupResponse>
 
+        //special: no children
+        //<BrowseNodes>
+        //    <Request>
+        //        <IsValid>True</IsValid>
+        //        <BrowseNodeLookupRequest>
+        //            <BrowseNodeId>10304191</BrowseNodeId>
+        //            <ResponseGroup>BrowseNodeInfo</ResponseGroup>
+        //        </BrowseNodeLookupRequest>
+        //    </Request>
+        //    <BrowseNode>
+        //        <BrowseNodeId>10304191</BrowseNodeId>
+        //        <Name>Categories</Name>
+        //        <IsCategoryRoot>1</IsCategoryRoot>
+        //        <Ancestors>
+        //            <BrowseNode>
+        //                <BrowseNodeId>10272111</BrowseNodeId>
+        //                <Name>Everything Else</Name>
+        //            </BrowseNode>
+        //        </Ancestors>
+        //    </BrowseNode>
+        //</BrowseNodes>
+
         XmlDocument xmlDocNoXmlns = awsReqUrlToXmlDoc_noXmlns(awsReqUrl);
 
         XmlNode browseNodesNode = xmlDocNoXmlns.SelectSingleNode("/BrowseNodeLookupResponse/BrowseNodes");
@@ -693,51 +903,36 @@ public class crifanLibAws
         {
             if (requestIsValid(browseNodesNode))
             {
-                XmlNodeList browseNodeList = browseNodesNode.SelectNodes("./BrowseNode/Children/BrowseNode");
-                if ((browseNodeList != null) && (browseNodeList.Count > 0))
+                XmlNode browseNodeNode = browseNodesNode.SelectSingleNode("./BrowseNode");
+                if (browseNodeNode != null)
                 {
-                    foreach (XmlNode childBrowseNode in browseNodeList)
-                    {
-                        awsBrowserNode singleBrowserNode = new awsBrowserNode();
-                        singleBrowserNode.IsCategoryRoot = false;
+                    //1. BrowseNodeId
+                    //2. Name
+                    //3. IsCategoryRoot
+                    browseNodeLookupResp.selfBrowseNode = extractSingleBrowseNode(browseNodeNode);
 
-                        XmlNode browseNodeIdNode = childBrowseNode.SelectSingleNode("./BrowseNodeId");
-                        XmlNode nameNode = childBrowseNode.SelectSingleNode("./Name");
+                    //4. Ancestors
+                    XmlNode ancestorsNode = browseNodeNode.SelectSingleNode("./Ancestors");
+                    browseNodeLookupResp.Ancestors = extractBrowseNodeList(ancestorsNode);
 
-                        singleBrowserNode.Id = browseNodeIdNode.InnerText; //"2619526011"
-
-                        singleBrowserNode.Name = nameNode.InnerText; //"Categories"
-                        //special:
-                        //<BrowseNode>
-                        //    <BrowseNodeId>3741181</BrowseNodeId>
-                        //    <Name>Parts &amp; Accessories</Name>
-                        //</BrowseNode>
-                        singleBrowserNode.Name = HttpUtility.HtmlDecode(singleBrowserNode.Name);
-
-                        XmlNode isCategoryRootNode = childBrowseNode.SelectSingleNode("./IsCategoryRoot");
-                        if ((isCategoryRootNode != null) && (isCategoryRootNode.InnerText == "1"))
-                        {
-                            singleBrowserNode.IsCategoryRoot = true;
-                        }
-
-                        browserNodeList.Add(singleBrowserNode);
-                    }
+                    //5. Children
+                    XmlNode childrenNode = browseNodeNode.SelectSingleNode("./Children");
+                    browseNodeLookupResp.Children = extractBrowseNodeList(childrenNode);
                 }
                 else
                 {
-                    gLogger.Debug("not found BrowseNode/Children for parentBrowserNodeId=" + parentBrowserNodeId);
+                    gLogger.Debug("not found BrowseNodes/BrowseNode for currentBrowseNodeId=" + currentBrowseNodeId);
                 }
             }
         }
         else
         {
             //something wrong
-            gLogger.Debug("not found /BrowseNodeLookupResponse/BrowseNodes for browser node ID=" + parentBrowserNodeId);
+            gLogger.Debug("not found /BrowseNodeLookupResponse/BrowseNodes for browser node ID=" + currentBrowseNodeId);
         }
 
-        return browserNodeList;
+        return browseNodeLookupResp;
     }
-
 
     /*
      * [Function]
@@ -1757,6 +1952,13 @@ public class crifanLibAws
             XmlNode asinNode = itemNode.SelectSingleNode("./ASIN");
             editorialReview.Asin = asinNode.InnerText;
 
+            //special:
+            //B003P9VZ0W
+            //no EditorialReview:
+            //<Item>
+            //    <ASIN>B003P9VZ0W</ASIN>
+            //</Item>
+
             XmlNode editorialReviewsNode = itemNode.SelectSingleNode("./EditorialReviews");
             if (editorialReviewsNode != null)
             {
@@ -1832,8 +2034,7 @@ public class crifanLibAws
             
             XmlNode asinNode = itemNode.SelectSingleNode("./ASIN");
             imagesInfo.Asin = asinNode.InnerText;
-
-
+            
             //<ImageSets>
             //    <ImageSet Category="primary">
             //        <SwatchImage>
@@ -1965,13 +2166,28 @@ public class crifanLibAws
             }
             else
             {
-                gLogger.Debug(String.Format("not find EditorialReviews for ASIN={0}", itemAsin));
+                //special: no Images
+                //<Items>
+                //    <Request>
+                //        <IsValid>True</IsValid>
+                //        <ItemLookupRequest>
+                //            <IdType>ASIN</IdType>
+                //            <ItemId>B0007S5N8O</ItemId>
+                //            <ResponseGroup>Images</ResponseGroup>
+                //            <VariationPage>All</VariationPage>
+                //        </ItemLookupRequest>
+                //    </Request>
+                //    <Item>
+                //        <ASIN>B0007S5N8O</ASIN>
+                //    </Item>
+                //</Items>
+
+                gLogger.Debug(String.Format("not find ImageSets for ASIN={0}", itemAsin));
             }
         }
         
         return imagesInfo;
-    }
-    
+    }    
     
 
     /********************************* AWS API *******************************/

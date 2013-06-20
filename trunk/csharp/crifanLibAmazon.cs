@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v2.5
+ * v2.6
  * 
  * [update]
- * 2013-06-11
+ * 2013-06-17
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,9 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v2.6]
+ * 1. update many functions
+ * 
  * [v2.5]
  * 1. add NLog log system support
  * 
@@ -76,24 +79,7 @@ public class crifanLibAmazon
 
     //for log
     public Logger gLogger = null;
-    
-    //find global defaut (current using) logger
-    public crifanLibAmazon()
-    {
-        //init something
-        crl = new crifanLib();
 
-        gLogger = LogManager.GetLogger("");
-    }
-
-    //specify your logger
-    public crifanLibAmazon(Logger logger)
-    {
-        //init something
-        crl = new crifanLib();
-
-        gLogger = logger;
-    }
 
     //for main catetory/best seller category/...
     public struct categoryItem
@@ -103,7 +89,7 @@ public class crifanLibAmazon
         //for main category, category key called search alias
         public string Key { get; set; } //instant-video
     };
-    
+
     public struct productDimension
     {
         public float length;
@@ -149,9 +135,51 @@ public class crifanLibAmazon
         public int curSelectdIdx;
         public string curSelectLable;
         public string curSelectUrl;
-        
+
         public List<variationItem> variationList;
     }
+
+    //find global defaut (current using) logger
+    public crifanLibAmazon()
+    {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
+
+        //init something
+        crl = new crifanLib();
+
+        gLogger = LogManager.GetLogger("");
+    }
+
+    //specify your logger
+    public crifanLibAmazon(Logger logger)
+    {
+        //!!! for load embedded dll: (1) register resovle handler
+        AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
+
+        //init something
+        crl = new crifanLib();
+
+        gLogger = logger;
+    }
+
+
+    //!!! for load embedded dll: (2) implement this handler
+    System.Reflection.Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
+    {
+        string dllName = args.Name.Contains(",") ? args.Name.Substring(0, args.Name.IndexOf(',')) : args.Name.Replace(".dll", "");
+
+        dllName = dllName.Replace(".", "_");
+
+        if (dllName.EndsWith("_resources")) return null;
+
+        System.Resources.ResourceManager rm = new System.Resources.ResourceManager(GetType().Namespace + ".Properties.Resources", System.Reflection.Assembly.GetExecutingAssembly());
+
+        byte[] bytes = (byte[])rm.GetObject(dllName);
+
+        return System.Reflection.Assembly.Load(bytes);
+    }
+
     
     /*
      * [Function]
@@ -172,14 +200,14 @@ public class crifanLibAmazon
      * B003BIG0DO
      * [Note]
      */
-    public bool extractAsinFromProductUrl(string productUrl, out string productAsin)
+    public bool extractAsinFromProductUrl(string productUrl, out string itemAsin)
     {
         bool foundAsin = false;
-        productAsin = "";
+        itemAsin = "";
 
         if (!foundAsin)
         {
-            if(crl.extractSingleStr(@"^http://www\.amazon\.com/gp/product/([a-zA-Z\d]+)(/.+)?$",productUrl, out productAsin,RegexOptions.IgnoreCase))
+            if(crl.extractSingleStr(@"^http://www\.amazon\.com/gp/product/([a-zA-Z\d]+)(/.+)?$",productUrl, out itemAsin,RegexOptions.IgnoreCase))
             {
                 foundAsin = true;
             }
@@ -187,7 +215,7 @@ public class crifanLibAmazon
 
         if (!foundAsin)
         {
-            if (crl.extractSingleStr(@"^http://www\.amazon\.com/.+?/dp/([a-zA-Z\d]+)(/.+?)$", productUrl, out productAsin, RegexOptions.IgnoreCase))
+            if (crl.extractSingleStr(@"^http://www\.amazon\.com/.+?/dp/([a-zA-Z\d]+)(/.+?)$", productUrl, out itemAsin, RegexOptions.IgnoreCase))
             {
                 foundAsin = true;
             }
@@ -209,12 +237,12 @@ public class crifanLibAmazon
      * http://www.amazon.com/gp/product/B0083PWAPW
      * [Note]
      */
-    public string generateProductUrlFromAsin(string productAsin)
+    public string generateProductUrlFromAsin(string itemAsin)
     {
         string productUrl = "";
         //http://www.amazon.com/gp/product/B0057FQCNC
         //http://www.amazon.com/gp/product/B0083PWAPW
-        productUrl = constAmazonGpProductUrl + productAsin; //http://www.amazon.com/gp/product/B0083PWAPW
+        productUrl = constAmazonGpProductUrl + itemAsin; //http://www.amazon.com/gp/product/B0083PWAPW
 
         return productUrl;
     }
@@ -267,16 +295,22 @@ public class crifanLibAmazon
      * [Function]
      * extract next page url
      * [Input]
-     * current page html of 
+     * current page url or its html
      * http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3dinstant-video
      * [Output]
      * http://www.amazon.com/s/ref=nb_sb_noss?url=search-alias%3Dinstant-video#/ref=sr_pg_2?rh=n%3A2858778011&page=2&ie=UTF8&qid=1368688123
      * [Note]
      */
-    public bool extractNextPageUrl(string curPageHtml, out string nextPageUrl)
+    public bool extractNextPageUrl(string curPageUrl, string curPageHtml, out string nextPageUrl)
     {
         bool gotNextPageUrl = false;
         nextPageUrl = "";
+
+        //if no give html, then get it first
+        if (string.IsNullOrEmpty(curPageHtml))
+        {
+            curPageHtml = crl.getUrlRespHtml_multiTry(curPageUrl);
+        }
 
         /*
             <a title="Next Page" 
@@ -299,6 +333,7 @@ public class crifanLibAmazon
         else
         {
             gotNextPageUrl = false;
+            gLogger.Debug("can not find pagnNextLink for " + curPageUrl);
         }
 
         return gotNextPageUrl;
@@ -308,16 +343,21 @@ public class crifanLibAmazon
      * [Function]
      * extract searched item list from amazon search result html 
      * [Input]
-     * amazon search result html
+     * amazon search result url or its html
      * [Output]
      * searched item list, each type is searchResultItem
      * [Note]
      */
-    public bool extractSearchItemList(string searchRespHtml, out List<searchResultItem> itemList)
+    public bool extractSearchItemList(string searchUrl, string searchRespHtml, out List<searchResultItem> itemList)
     {
         bool extractItemListOk = false;
-
         itemList = new List<searchResultItem>();
+
+        //if no give html, then get it first
+        if (string.IsNullOrEmpty(searchRespHtml))
+        {
+            searchRespHtml = crl.getUrlRespHtml_multiTry(searchUrl);
+        }
 
         //type1:
         //<div id="atfResults" class="list results twister">
@@ -384,6 +424,7 @@ public class crifanLibAmazon
                 else
                 {
                     //something wrong
+                    gLogger.Debug("can not find h3[@class]/a within resultItemNode for " + searchUrl);
                 }
             }
         }
@@ -418,6 +459,7 @@ public class crifanLibAmazon
                 else
                 {
                     //something wrong
+                    gLogger.Debug("can not find zg_itemImageImmersion within resultItemNode for " + searchUrl);
                 }
             }
         }
@@ -446,12 +488,14 @@ public class crifanLibAmazon
                 else
                 {
                     //something wrong
+                    gLogger.Debug("can not find ilo2 ilc2 within mainResultsLiNode for " + searchUrl);
                 }
             }
         }
         else
         {
             //something wrong
+            gLogger.Debug("not find any kind of result item for " + searchUrl);
         }
 
         return extractItemListOk;
@@ -1247,6 +1291,23 @@ public class crifanLibAmazon
         else
         {
             //something wrong ?
+
+            //or special:
+
+            //http://www.amazon.com/gp/offer-listing/B003B3OOPA/ref=dp_olp_new_mbc?ie=UTF8&condition=new
+            //<table id="metatabs" cellspacing="0">
+            //    <tr id="metatabrow">
+            //            <td id="all" class="olpleftoff">
+            //                <a href="/gp/offer-listing/B003B3OOPA/sr=/qid=/ref=olp_tab_all?ie=UTF8&amp;colid=&amp;coliid=&amp;me=&amp;qid=&amp;seller=&amp;sr=">All</a>
+            //            </td>
+            //            <td id="new" class="olpmiddleon inactive">
+            //                <a href="/gp/offer-listing/B003B3OOPA/sr=/qid=/ref=olp_tab_new?ie=UTF8&amp;colid=&amp;coliid=&amp;condition=new&amp;me=&amp;qid=&amp;seller=&amp;sr=">&nbsp;New&nbsp;<span class="numberreturned">from $8.09</span>&nbsp;<span class="olpPercentOff">(Save  <b>8</b>%)</span></a>
+            //            </td>
+
+            //        <td class="olprighton">&nbsp;&nbsp;</td>
+            //    </tr>
+            //</table>
+
             extractSellerInfoOk = false;
             gLogger.Debug("not found usedANode for " + usedAndNewUrl);
         }
@@ -1329,9 +1390,15 @@ public class crifanLibAmazon
      * product customer reviews number
      * [Note]
      */
-    public int extractProductReviewNumber(string productHtml)
+    public int extractProductReviewNumber(string productUrl = "", string productHtml = "")
     {
         int reviewNumber = 0;
+
+        //if not give html, get it
+        if (string.IsNullOrEmpty(productHtml))
+        {
+            productHtml = crl.getUrlRespHtml_multiTry(productUrl);
+        }
 
         //http://www.amazon.com/Silver-Linings-Playbook/dp/B00CL68QVQ/ref=sr_1_2?s=instant-video&ie=UTF8&qid=1368688342&sr=1-2
         //<span class="tiny">
@@ -1370,6 +1437,31 @@ public class crifanLibAmazon
             else 
             {
                 //something wrong
+
+                //special:
+                //http://www.amazon.com/gp/product/B005SSWKMK
+                //<div class='fl mt15 clearboth'>
+                //<a id='revSAR' href='http://www.amazon.com/Casio-PRW2500T-7CR-Pathfinder-Multi-Function-Titanium/product-reviews/B005SSWKMK/ref=cm_cr_dp_see_all_summary?ie=UTF8&showViewpoints=1' class='txtsmall noTextDecoration'>
+                //    See all 89 customer reviews
+                //</a>
+                //</div>
+                HtmlNode revSarANode = rootNode.SelectSingleNode("//a[@id='revSAR']");
+                if (revSarANode != null)
+                {
+                    string strSeeAll = revSarANode.InnerText; //"      See all 89 customer reviews    "
+                    strSeeAll = strSeeAll.Trim();
+                    string strSeeAllCustomerReviews = "";
+                    if (crl.extractSingleStr(@"see all ([\d,]+) customer reviews", strSeeAll, out strSeeAllCustomerReviews, RegexOptions.IgnoreCase))
+                    {
+                        strSeeAllCustomerReviews = strSeeAllCustomerReviews.Replace(",", ""); //"89"
+                        reviewNumber = Int32.Parse(strSeeAllCustomerReviews);
+                    }
+                }
+                else 
+                {
+                    //something wrong
+                    gLogger.Debug("can not found See all xxx customer reviews");
+                }
             }
         }
         else
@@ -1383,15 +1475,21 @@ public class crifanLibAmazon
      * [Function]
      * extract product best seller rank number list from product html
      * [Input]
-     * amazon product url's html
+     * amazon product url or its html
      * [Output]
      * best seller rank number list
      * [Note]
      */
-    public List<productBestRank> extractProductBestSellerRankList(string productHtml)
+    public List<productBestRank> extractProductBestSellerRankList(string productUrl = "", string productHtml = "")
     {
         List<productBestRank> bestSellerRankList = new List<productBestRank>();
-        
+
+        //if not give html, get it
+        if (string.IsNullOrEmpty(productHtml))
+        {
+            productHtml = crl.getUrlRespHtml_multiTry(productUrl);
+        }
+
         //special:
         //http://www.amazon.com/Kindle-Paperwhite-Touch-light/dp/B007OZNZG0/ref=lp_1055398_1_1?ie=UTF8&qid=1370531997&sr=1-1
         //http://www.amazon.com/Intex-Pillow-Airbed-Built--Electric/dp/B000HBILB2/ref=lp_1055398_1_24?ie=UTF8&qid=1370531997&sr=1-24
