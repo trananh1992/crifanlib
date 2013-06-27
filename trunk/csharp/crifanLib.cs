@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v7.0
+ * v7.5
  * 
  * [update]
- * 2013-06-20
+ * 2013-06-25
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,15 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v7.5]
+ * 1. update _getUrlResponse: ReadWriteTimeout, gUserAgent
+ * 2. update getUrlRespHtml
+ * 3. update getUrlRespHtml_multiTry
+ * 
+ * [v7.1]
+ * 1. update getUrlRespHtml_multiTry
+ * 2. update getUrlRespHtml
+ * 
  * [v7.0]
  * 1. add findRootTreeNode
  * 
@@ -157,6 +166,33 @@ public class crifanLib
     const char replacedChar = '_';
 
     string[] cookieFieldArr = { "expires", "domain", "secure", "path", "httponly", "version" };
+
+    //IE7
+    const string constUserAgent_IE7_x64 = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)";
+    //IE8
+    const string constUserAgent_IE8_x64 = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E";
+    //IE9
+    const string constUserAgent_IE9_x64 = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)"; // x64
+    const string constUserAgent_IE9_x86 = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)"; // x86
+    //Chrome
+    const string constUserAgent_Chrome = "Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.99 Safari/533.4";
+    //Mozilla Firefox
+    const string constUserAgent_Firefox = "Mozilla/5.0 (Windows; U; Windows NT 6.1; rv:1.9.2.6) Gecko/20100625 Firefox/3.6.6";
+    private string gUserAgent;
+    
+    //detault values:
+    //getUrlResponse
+    private const Dictionary<string, string> defHeaderDict = null;
+    private const Dictionary<string, string> defPostDict = null;
+    private const int defTimeout = 30 * 1000;
+    private const string defPostDataStr = null;
+    private const int defReadWriteTimeout = 30 * 1000;
+    //getUrlRespHtml 
+    private const string defCharset = null;
+    //getUrlRespHtml_multiTry
+    private const int defMaxTryNum = 5;
+    private const int defRetryFailSleepTime = 100; //sleep time in ms when retry fail for getUrlRespHtml
+
     List<string> cookieFieldList = new List<string>();
 
     CookieCollection curCookies = null;
@@ -183,11 +219,11 @@ public class crifanLib
         AppDomain.CurrentDomain.AssemblyResolve += new ResolveEventHandler(CurrentDomain_AssemblyResolve);
 
         //http related
+        gUserAgent = constUserAgent_IE8_x64;
         //set max enough to avoid http request is used out -> avoid dead while get response 
         System.Net.ServicePointManager.DefaultConnectionLimit = 200;
 
         curCookies = new CookieCollection();
-
         // init const cookie keys
         foreach (string key in cookieFieldArr)
         {
@@ -272,6 +308,61 @@ public class crifanLib
         }
 
         return rootTreeNode;
+    }
+
+    /*
+     * [Function]
+     * un highlight tree node
+     * [Input]
+     * some TreeNode
+     * 
+     * [Output]
+     * restore color to background color
+     * 
+     * [Note]
+     */
+    public Color unHighlightNode(TreeView trvValue, TreeNode treeNode)
+    {
+        Color oldColor = trvValue.BackColor;
+        if (treeNode != null)
+        {
+            oldColor = treeNode.BackColor;
+            treeNode.BackColor = trvValue.BackColor;
+            treeNode.ForeColor = Color.Black;
+        }
+
+        return oldColor;
+    }
+
+    /*
+     * [Function]
+     * highlight tree node
+     * [Input]
+     * some TreeNode
+     * 
+     * [Output]
+     * set color to highlighted color
+     * 
+     * [Note]
+     */
+    public Color highlightNode(TreeView trvValue, TreeNode someNode)
+    {
+        Color oldColor = trvValue.BackColor; //"{Name=Window, ARGB=(255, 255, 255, 255)}"
+        if (someNode != null)
+        {
+            oldColor = someNode.BackColor; //"{Name=0, ARGB=(0, 0, 0, 0)}"
+
+            // HTML #3399FF -> RGB(51,153,255)
+            //"{Name=MenuHighlight, ARGB=(255, 51, 153, 255)}"
+            someNode.BackColor = SystemColors.MenuHighlight;
+            
+            //node.BackColor = nodeHlBackColor;
+
+            //node.ForeColor = Color.FromArgb(255, 255, 255);
+            someNode.ForeColor = Color.White;
+        }
+
+        return oldColor;
     }
 
 
@@ -1364,10 +1455,11 @@ public class crifanLib
     /* get url's response
      * */
     public HttpWebResponse _getUrlResponse(string url,
-                                    Dictionary<string, string> headerDict,
-                                    Dictionary<string, string> postDict,
-                                    int timeout,
-                                    string postDataStr)
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout)
     {
         //CookieCollection parsedCookies;
 
@@ -1384,17 +1476,7 @@ public class crifanLib
         //req.Headers["Accept-Language"] = gAcceptLanguage;
 
         req.KeepAlive = true;
-        
-        //IE8
-        const string gUserAgent = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E";
-        //IE9
-        //const string gUserAgent = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)"; // x64
-        //const string gUserAgent = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)"; // x86
-        //const string gUserAgent = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)";
-        //Chrome
-        //const string gUserAgent = "Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.99 Safari/533.4";
-        //Mozilla Firefox
-        //const string gUserAgent = "Mozilla/5.0 (Windows; U; Windows NT 6.1; rv:1.9.2.6) Gecko/20100625 Firefox/3.6.6";
+
         req.UserAgent = gUserAgent;
 
         req.Headers["Accept-Encoding"] = "gzip, deflate";
@@ -1407,6 +1489,14 @@ public class crifanLib
             req.Timeout = timeout;
         }
 
+        if (readWriteTimeout > 0)
+        {
+            //default ReadWriteTimeout is 300000=300 seconds = 5 minutes !!!
+            //too long, so here change to 300000 = 30 seconds
+            //for support TimeOut for later StreamReader's ReadToEnd
+            req.ReadWriteTimeout = readWriteTimeout;
+        }
+
         if (curCookies != null)
         {
             req.CookieContainer = new CookieContainer();
@@ -1414,7 +1504,7 @@ public class crifanLib
             req.CookieContainer.Add(curCookies);
         }
 
-        if (headerDict != null)
+        if ((headerDict != null) && (headerDict.Count > 0))
         {
             foreach (string header in headerDict.Keys)
             {
@@ -1470,15 +1560,15 @@ public class crifanLib
             }
         }
 
-        if (postDict != null || postDataStr != "")
+        if (((postDict != null) && (postDict.Count > 0)) || (!string.IsNullOrEmpty(postDataStr)))
         {
             req.Method = "POST";
             if (req.ContentType == null)
             {
                 req.ContentType = "application/x-www-form-urlencoded";
             }
-            
-            if (postDict != null)
+
+            if ((postDict != null) && (postDict.Count > 0))
             {
                 postDataStr = quoteParas(postDict);
             }
@@ -1487,39 +1577,54 @@ public class crifanLib
             byte[] postBytes = Encoding.UTF8.GetBytes(postDataStr);
             req.ContentLength = postBytes.Length;
 
-            Stream postDataStream = req.GetRequestStream();
-            postDataStream.Write(postBytes, 0, postBytes.Length);
-            postDataStream.Close();
+            try
+            {
+                Stream postDataStream = req.GetRequestStream();
+                postDataStream.Write(postBytes, 0, postBytes.Length);
+                postDataStream.Close();
+            }
+            catch (WebException webEx)
+            {
+                //for prev has set ReadWriteTimeout
+                //so here also may timeout
+                if (webEx.Status == WebExceptionStatus.Timeout)
+                {
+                    req = null;
+                }
+            }
         }
         else
         {
             req.Method = "GET";
         }
 
-        //may timeout, has fixed in:
-        //http://www.crifan.com/fixed_problem_sometime_httpwebrequest_getresponse_timeout/
-        try
+        if (req != null)
         {
-            resp = (HttpWebResponse)req.GetResponse();
-            updateLocalCookies(resp.Cookies, ref curCookies);
-        }
-        catch (WebException  webEx)
-        {
-            if (webEx.Status == WebExceptionStatus.Timeout)
+            //may timeout, has fixed in:
+            //http://www.crifan.com/fixed_problem_sometime_httpwebrequest_getresponse_timeout/
+            try
             {
-                resp = null;
+                resp = (HttpWebResponse)req.GetResponse();
+                updateLocalCookies(resp.Cookies, ref curCookies);
+            }
+            catch (WebException webEx)
+            {
+                if (webEx.Status == WebExceptionStatus.Timeout)
+                {
+                    resp = null;
+                }
             }
         }
-
         
         return resp;
     }
 #if USE_GETURLRESPONSE_BW
     private void getUrlResponse_bw(string url,
-                                    Dictionary<string, string> headerDict,
-                                    Dictionary<string, string> postDict,
-                                    int timeout,
-                                    string postDataStr)
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout)
     {
         // Create a background thread
         BackgroundWorker bgwGetUrlResp = new BackgroundWorker();
@@ -1530,7 +1635,7 @@ public class crifanLib
         bNotCompleted_resp = true;
             
         // run in another thread
-        object paraObj = new object[] {url, headerDict, postDict, timeout, postDataStr};
+        object paraObj = new object[] { url, headerDict, postDict, timeout, postDataStr, readWriteTimeout };
         bgwGetUrlResp.RunWorkerAsync(paraObj);
     }
 
@@ -1542,8 +1647,9 @@ public class crifanLib
         Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[2];
         int timeout = (int)paraObj[3];
         string postDataStr = (string)paraObj[4];
+        int readWriteTimeout = (int)paraObj[5];
 
-        e.Result = _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);
+        e.Result = _getUrlResponse(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
     }
 
     //void m_bgWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
@@ -1585,14 +1691,15 @@ public class crifanLib
     /* get url's response
     * */
     public HttpWebResponse getUrlResponse(string url,
-                                    Dictionary<string, string> headerDict,
-                                    Dictionary<string, string> postDict,
-                                    int timeout,
-                                    string postDataStr)
+                                        Dictionary<string, string> headerDict = defHeaderDict,
+                                        Dictionary<string, string> postDict = defPostDict,
+                                        int timeout = defTimeout,
+                                        string postDataStr = defPostDataStr,
+                                        int readWriteTimeout = defReadWriteTimeout)
     {
 #if USE_GETURLRESPONSE_BW
         HttpWebResponse localCurResp = null;
-        getUrlResponse_bw(url, headerDict, postDict, timeout, postDataStr);
+        getUrlResponse_bw(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
         while (bNotCompleted_resp)
         {
             System.Windows.Forms.Application.DoEvents();
@@ -1607,61 +1714,82 @@ public class crifanLib
         return _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);;
 #endif
     }
-    
-    public HttpWebResponse getUrlResponse(string url,
-                                Dictionary<string, string> headerDict,
-                                Dictionary<string, string> postDict)
-    {
-        return getUrlResponse(url, headerDict, postDict, 0, "");
-    }
-
-    public HttpWebResponse getUrlResponse(string url,
-                            Dictionary<string, string> headerDict)
-    {
-        return getUrlResponse(url, headerDict, null);
-    }
-
-    public HttpWebResponse getUrlResponse(string url)
-    {
-        return getUrlResponse(url, null, null, 0, "");
-    }
-
+        
     // valid charset:"GB18030"/"UTF-8", invliad:"UTF8"
     public string getUrlRespHtml(string url,
-                                    Dictionary<string, string> headerDict,
-                                    string charset,
-                                    Dictionary<string, string> postDict,
-                                    int timeout,
-                                    string postDataStr)
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    string charset = defCharset,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout)
     {
         string respHtml = "";
 
-        //HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout);
-        HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout, postDataStr);
+        HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
 
         //long realRespLen = resp.ContentLength;
         if (resp != null)
         {
             StreamReader sr;
-            if ((charset != null) && (charset != ""))
+            Stream respStream = resp.GetResponseStream();
+            if (!string.IsNullOrEmpty(charset))
             {
                 Encoding htmlEncoding = Encoding.GetEncoding(charset);
-                sr = new StreamReader(resp.GetResponseStream(), htmlEncoding);
+                sr = new StreamReader(respStream, htmlEncoding);
             }
             else
             {
-                sr = new StreamReader(resp.GetResponseStream());
+                sr = new StreamReader(respStream);
             }
-            
-            //respHtml = sr.ReadToEnd();
-            while (!sr.EndOfStream)
+
+            try
             {
-                respHtml = respHtml + sr.ReadLine();
+                respHtml = sr.ReadToEnd();
+
+                //while (!sr.EndOfStream)
+                //{
+                //    respHtml = respHtml + sr.ReadLine();
+                //}
+
+                //string curLine = "";
+                //while ((curLine = sr.ReadLine()) != null)
+                //{
+                //    respHtml = respHtml + curLine;
+                //}
+
+                ////http://msdn.microsoft.com/zh-cn/library/system.io.streamreader.peek.aspx
+                //while (sr.Peek() > -1) //while not error or not reach end of stream
+                //{
+                //    respHtml = respHtml + sr.ReadLine();
+                //}
+
+                //respStream.Close();
+                //sr.Close();
+                //resp.Close();
             }
-
-            sr.Close();
-
-            resp.Close();
+            catch (Exception ex)
+            {
+                //【未解决】C#中StreamReader中遇到异常：未处理ObjectDisposedException,无法访问已关闭的流
+                //http://www.crifan.com/csharp_streamreader_unhandled_exception_objectdisposedexception_cannot_access_closed_stream
+                //System.ObjectDisposedException
+                respHtml = "";
+            }
+            finally
+            {
+                if (respStream != null)
+                {
+                    respStream.Close();
+                }
+                if (sr != null)
+                {
+                    sr.Close();
+                }
+                if (resp != null)
+                {
+                    resp.Close();
+                }
+            }
         }
 
         return respHtml;
@@ -1669,64 +1797,36 @@ public class crifanLib
 
     public string getUrlRespHtml_multiTry
                                     (string url,
-                                    Dictionary<string, string> headerDict = null,
-                                    string charset = null,
-                                    Dictionary<string, string> postDict = null,
-                                    int timeout = 30*1000,/* defaul use timeout to 30*1000ms */
-                                    string postDataStr = "",
-                                    int maxTryNum = 5)                                
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    string charset = defCharset,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout,
+                                    int maxTryNum = defMaxTryNum,
+                                    int retryFailSleepTime = defRetryFailSleepTime)          
     {
         string respHtml = "";
 
         for (int tryIdx = 0; tryIdx < maxTryNum; tryIdx++)
         {
-            respHtml = getUrlRespHtml(url, headerDict, charset, postDict, timeout, postDataStr);
-            if (respHtml != "")
+            respHtml = getUrlRespHtml(url, headerDict, charset, postDict, timeout, postDataStr, readWriteTimeout);
+            if (!string.IsNullOrEmpty(respHtml))
+            {
                 break;
+            }
             else
             {
- 
+                //something wrong
+                //maybe network is not stable
+                //so wait some time, then re-do it
+                System.Threading.Thread.Sleep(retryFailSleepTime);
             }
         }
 
         return respHtml;
     }
-
-    public string getUrlRespHtml(string url, Dictionary<string, string> headerDict, string charset, Dictionary<string, string> postDict, string postDataStr)
-    {
-        return getUrlRespHtml(url, headerDict, charset, postDict, 0, postDataStr);
-    }
-
-    public string getUrlRespHtml(string url, Dictionary<string, string> headerDict, string charset, Dictionary<string, string> postDict)
-    {
-        return getUrlRespHtml(url, headerDict, charset, postDict, 0, "");
-    }
-
-    public string getUrlRespHtml(string url, Dictionary<string, string> headerDict, Dictionary<string, string> postDict)
-    {
-        return getUrlRespHtml(url, headerDict, "", postDict, "");
-    }
-
-    public string getUrlRespHtml(string url, Dictionary<string, string> headerDict)
-    {
-        return getUrlRespHtml(url, headerDict, null);
-    }
-
-    public string getUrlRespHtml(string url, string charset, int timeout)
-    {
-        return getUrlRespHtml(url, null, charset, null, timeout, "");
-    }
-
-    public string getUrlRespHtml(string url, string charset)
-    {
-        return getUrlRespHtml(url, charset, 0);
-    }
-
-    public string getUrlRespHtml(string url)
-    {
-        return getUrlRespHtml(url, "");
-    }
-
+    
     ////return current download percentage (max=100)
     //public int getCurDownloadPercent()
     //{
@@ -1993,7 +2093,7 @@ public class crifanLib
         //postDict.Add("text", strToTranslate);
         //postDict.Add("langpair", fromLanguage + "|" + toLanguage);
         //const string googleTransHtmlCharset = "UTF-8";
-        //string transRetHtml = getUrlRespHtml(googleTranslateUrl, null,googleTransHtmlCharset, postDict);
+        //string transRetHtml = getUrlRespHtml(googleTranslateUrl, charset:googleTransHtmlCharset, postDict:postDict);
 
 
         ////http://translate.google.cn/#zh-CN/en/%E4%BB%96%E4%BB%AC%E6%98%AF%E8%BF%99%E6%A0%B7%E8%AF%B4%E7%9A%84
@@ -2060,7 +2160,7 @@ public class crifanLib
             queryUrl = "http://www.pagerankme.com/";
             postDict = new Dictionary<string, string>();
             postDict.Add("url", domainUrl);
-            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
             //<a href="http://www.pagerankme.com" target="_blank" style="text-decoration:none;color:#000000;">PageRank 7</a>
             rankStr = "";
             if (extractSingleStr(@"<a href=""http://www\.pagerankme\.com"" target=""_blank"" style="".+?"">PageRank (\d+)</a>", respHtml, out rankStr))
@@ -2083,7 +2183,7 @@ public class crifanLib
             postDict.Add("domain", domainUrl);
             postDict.Add("Submit", "CHECK");
 
-            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
 
             //<h3>Your Page Rank: 7/10
             rankStr = "";
@@ -2116,14 +2216,14 @@ public class crifanLib
             string firstWholeUrl = firstBaseUrl + noHttpPreDomainUrl;
             headerDict = new Dictionary<string, string>();
             headerDict.Add("referer", pageRankMainUrl);
-            tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict);
+            tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict: headerDict);
 
             string baseUrl = "http://pagerank.webmasterhome.cn/prLoading.asp?domain=";
             //http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
             queryUrl = baseUrl + noHttpPreDomainUrl;
             headerDict = new Dictionary<string, string>();
             headerDict.Add("referer", firstWholeUrl);
-            respHtml = getUrlRespHtml(queryUrl, headerDict);
+            respHtml = getUrlRespHtml(queryUrl, headerDict: headerDict);
 
             //'<img src=\"http://primg.webmasterhome.cn/pr7.gif\" style=\"width:40px;height:5px;border:0px;\" alt=PageRank align=absmiddle> (7/10)'
             rankStr = "";
@@ -2179,7 +2279,7 @@ public class crifanLib
                 postDict.Add("AC", accessCode);
                 postDict.Add("RAC", accessCode);
                 postDict.Add("rank", domainUrl);
-                respHtml = getUrlRespHtml(queryUrl, null, postDict);
+                respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
                 //<a href="http://www.alexa.com/data/details/main/http://hubpages.com" target="_blank">444</a>
                 if (extractSingleStr(@"<a\s+href=""http://www\.alexa\.com/data/details/main/.+?""\s+target=""_blank"">(\d+)</a>", respHtml, out alexaRankStr))
                 {
@@ -2258,7 +2358,7 @@ public class crifanLib
             postDict.Add("domain", domainUrl);
             postDict.Add("Submit", "CHECK");
 
-            respHtml = getUrlRespHtml(queryUrl, null, postDict);
+            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
 
             //<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
             alexaRankStr = "";
@@ -2361,7 +2461,49 @@ public class crifanLib
 
         return downloadOk;
     }
+    
+    ////*** need in furure, do full test to check following WebClient DownloadFile/DownloadFileAsync is ok or not ***
+    //string gLastErrStr = "";
+    ////private Action<int> gFuncUpdateProgress = null;
+    //private void _downloadFileCompleted(object sender, AsyncCompletedEventArgs e)
+    //{
+    //    if (e.Error != null)
+    //    {
+    //        gLastErrStr = e.Error.Message;
+    //    }
+    //}
 
+    //private void _downloadProgressChanged(object sender, DownloadProgressChangedEventArgs e)
+    //{
+    //    if (gFuncUpdateProgress != null)
+    //    {
+    //        //e.BytesReceived
+    //        //e.TotalBytesToReceive
+    //        gFuncUpdateProgress(e.ProgressPercentage);
+    //    }
+    //}
+
+    //public bool downloadFile(string fileUrl, string fullnameToStore, out string errStr, Action<int> funcUpdateProgress)
+    //{
+    //    bool downloadOk = false;
+    //    errStr = "未知错误！";
+
+    //    WebClient wcDownloader = new WebClient();
+    //    Uri fileUri = new Uri(fileUrl);
+    //    wcDownloader.DownloadProgressChanged += new DownloadProgressChangedEventHandler(_downloadProgressChanged);
+    //    wcDownloader.DownloadFileCompleted += new AsyncCompletedEventHandler(_downloadFileCompleted);
+    //    wcDownloader.DownloadFileAsync(fileUri, fullnameToStore);
+
+    //    gFuncUpdateProgress = funcUpdateProgress;
+
+    //    if (!string.IsNullOrEmpty(gLastErrStr))
+    //    {
+    //        errStr = gLastErrStr;
+    //        downloadOk = false;
+    //    }
+
+    //    return downloadOk;
+    //}
 
     //open folder and select file
     public void openFolderAndSelectFile(string fullFilename)
