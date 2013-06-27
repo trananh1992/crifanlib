@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v1.4
+ * v1.5
  * 
  * [update]
- * 2013-06-19
+ * 2013-06-25
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,9 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v1.5]
+ * 1. update awsEndpoint
+ * 
  * [v1.4]
  * 1. update to awsGetBrowseNodeLookupResp
  * 2. added extractSingleBrowseNode, extractBrowseNodeList
@@ -59,6 +62,21 @@ public class crifanLibAws
     public Logger gLogger = null;
     
     //AWS
+    //http://www.crifan.com/how_to_use_amzon_aws_api_cn_version/
+    public enum awsEndpoint
+    {
+        CA,
+        CN,
+        DE,
+        ES,
+        FR,
+        IT,
+        JP,
+        UK,
+        US
+    }
+
+    private Dictionary<awsEndpoint, string> awsEndpointDict;
     private string awsAccessKeyId;
     private string awsSecretKey;
     //added by Crifan Li
@@ -71,7 +89,7 @@ public class crifanLibAws
     //    <Message>Your request is missing required parameters. Required parameters include AssociateTag.</Message>
     //</Error>
     private string awsAssociateTag;
-    private string awsDestination;
+    private awsEndpoint awsEndpointType;
     private string awsApiVersion;
 
     private string awsNamespace;
@@ -279,6 +297,8 @@ public class crifanLibAws
         crl = new crifanLib();
 
         gLogger = LogManager.GetLogger("");
+
+        awsEndpointDict = buildEndpointDict();
     }
 
     //specify your logger
@@ -291,6 +311,49 @@ public class crifanLibAws
         crl = new crifanLib();
         
         gLogger = logger;
+
+        awsEndpointDict = buildEndpointDict();
+    }
+
+    private Dictionary<awsEndpoint, string> buildEndpointDict()
+    {
+        //old
+        /*
+        * The destination is the service end-point for your application:
+        *  US: ecs.amazonaws.com
+        *  JP: ecs.amazonaws.jp
+        *  UK: ecs.amazonaws.co.uk
+        *  DE: ecs.amazonaws.de
+        *  FR: ecs.amazonaws.fr
+        *  CA: ecs.amazonaws.ca
+        */
+
+        //new
+        //http://www.crifan.com/how_to_use_amzon_aws_api_cn_version/
+        //http://docs.aws.amazon.com/AWSECommerceService/latest/DG/AnatomyOfaRESTRequest.html#EndpointsandWebServices
+        //Locale  Endpoint
+        //CA      webservices.amazon.ca
+        //CN      webservices.amazon.cn
+        //DE      webservices.amazon.de
+        //ES      webservices.amazon.es
+        //FR      webservices.amazon.fr
+        //IT      webservices.amazon.it
+        //JP      webservices.amazon.co.jp
+        //UK      webservices.amazon.co.uk
+        //US      webservices.amazon.com
+
+        Dictionary<awsEndpoint, string> endpointDict = new Dictionary<awsEndpoint, string>();
+        endpointDict.Add(awsEndpoint.CA, "webservices.amazon.ca");
+        endpointDict.Add(awsEndpoint.CN, "webservices.amazon.cn");
+        endpointDict.Add(awsEndpoint.DE, "webservices.amazon.de");
+        endpointDict.Add(awsEndpoint.ES, "webservices.amazon.es");
+        endpointDict.Add(awsEndpoint.FR, "webservices.amazon.fr");
+        endpointDict.Add(awsEndpoint.IT, "webservices.amazon.it");
+        endpointDict.Add(awsEndpoint.JP, "webservices.amazon.co.jp");
+        endpointDict.Add(awsEndpoint.UK, "webservices.amazon.co.uk");
+        endpointDict.Add(awsEndpoint.US, "webservices.amazon.com");
+
+        return endpointDict;
     }
 
     //!!! for load embedded dll: (2) implement this handler
@@ -311,6 +374,7 @@ public class crifanLibAws
 
     /********************************* AWS API *******************************/
 
+    /*********************************  helper functions *********************************/
     /*
      * To help the SortedDictionary order the name-value pairs in the correct way.
      */
@@ -503,37 +567,32 @@ public class crifanLibAws
         return canonicalString;
     }
 
+    /*********************************  AWS functions *********************************/
 
     public void initAws(
         string accessKeyId,
         string secretKey,
         string associateTag,
-        string destination = "ecs.amazonaws.com",
+        awsEndpoint endpoint,
         string apiVersion = "2011-08-01")
     {
         //get input para
         awsAccessKeyId = accessKeyId;
         awsSecretKey = secretKey;
         awsAssociateTag = associateTag;
-        awsDestination = destination;
+        awsEndpointType = endpoint;
         awsApiVersion = apiVersion;
 
         //init related
         awsNamespace = "http://webservices.amazon.com/AWSECommerceService/" + awsApiVersion;
 
-        /*
-        * The destination is the service end-point for your application:
-        *  US: ecs.amazonaws.com
-        *  JP: ecs.amazonaws.jp
-        *  UK: ecs.amazonaws.co.uk
-        *  DE: ecs.amazonaws.de
-        *  FR: ecs.amazonaws.fr
-        *  CA: ecs.amazonaws.ca
-        */
-        awsEndPoint = awsDestination.ToLower();
+        string endpointStr = "";
+        if (awsEndpointDict.TryGetValue(awsEndpointType, out endpointStr))
+        {
+            awsEndPoint = endpointStr;
+        }
 
         secretKeyByteArr = Encoding.UTF8.GetBytes(awsSecretKey);
-
         hmacSha256Signer = new HMACSHA256(secretKeyByteArr);
     }
 
@@ -615,6 +674,33 @@ public class crifanLibAws
         return isValid;
     }
 
+    //just for:
+    //sometime, getUrlRespHtml_multiTry from amazon will fail, no response
+    //->maybe some network is not stable, maybe amazon access frequence has some limit
+    //-> so here to wait sometime to re-do it
+    private string _getUrlRespHtml_multiTry_multiTry(string awsReqUrl, int maxTryNum = 10)
+    {
+        string respHtml = "";
+
+        for (int tryIdx = 0; tryIdx < maxTryNum; tryIdx++)
+        {
+            respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum: maxTryNum);
+            if (respHtml != "")
+            {
+                break;
+            }
+            else
+            {
+                //something wrong
+                //maybe network is not stable
+                //so wait some time, then re-do it
+                System.Threading.Thread.Sleep(200); //200 ms
+            }
+        }
+
+        return respHtml;
+    }
+
 
     /*
      * [Function]
@@ -633,20 +719,20 @@ public class crifanLibAws
         XmlDocument xmlDocNoXmlns = new XmlDocument();
 
         //string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum:20);
-        string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl, maxTryNum: 10);
+        string respHtml = _getUrlRespHtml_multiTry_multiTry(awsReqUrl, maxTryNum:100);
         string xmlnsStr = " xmlns=\"" + awsNamespace + "\""; //"http://webservices.amazon.com/AWSECommerceService/2011-08-01"
         string xmlNoXmlns = respHtml.Replace(xmlnsStr, "");
         if (!string.IsNullOrEmpty(xmlNoXmlns))
+        {
+            xmlDocNoXmlns.LoadXml(xmlNoXmlns);
+        }
+        else
         {
             //special:
             //when request too much and too frequently, maybe errror, such as when :
             //"http://ecs.amazonaws.com/onca/xml?AWSAccessKeyId=AKIAJQAUAH2R4HCG63LQ&AssociateTag=crifancom-20&BrowseNode=3741411&ItemPage=6&Operation=ItemSearch&ResponseGroup=ItemIds&SearchIndex=Appliances&Service=AWSECommerceService&Timestamp=2013-06-14T16%3A40%3A24Z&Version=2011-08-01&Signature=cw3Al9pxqj1d5II8dN3VeyU5DPxQhIZiDYjLPLIA86A%3D"
             //return empty respHtml
 
-            xmlDocNoXmlns.LoadXml(xmlNoXmlns);
-        }
-        else
-        {
             gLogger.Debug("can not get valid respHtml for awsReqUrl=" + awsReqUrl);
         }
 
@@ -675,7 +761,8 @@ public class crifanLibAws
         //doc.Load(response.GetResponseStream());
 
         //method 2: use my getUrlRespHtml_multiTry
-        string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl);
+        //string respHtml = crl.getUrlRespHtml_multiTry(awsReqUrl);
+        string respHtml = _getUrlRespHtml_multiTry_multiTry(awsReqUrl);
 
         xmlDocWithXmlns.LoadXml(respHtml);
 
