@@ -17,6 +17,9 @@ http://www.crifan.com/files/doc/docbook/python_summary/release/html/python_summa
 [TODO]
 
 [History]
+[v4.7, 2013-07-02]
+1. add initProxy, initProxyAndCookie
+
 [v4.5]
 1. add getUrlRespHtml_multiTry
 2. updated formatString
@@ -120,7 +123,7 @@ import cookielib;
 import htmlentitydefs;
 
 #--------------------------------const values-----------------------------------
-__VERSION__ = "v4.4";
+__VERSION__ = "v4.7";
 
 gConst = {
     'UserAgent' : 'Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)',
@@ -847,6 +850,54 @@ def initAutoHandleCookies(localCookieFileName=None):
     #print "Auto handle cookies inited OK";
     return;
 
+def initProxy(singleProxyDict = {}):
+    """Add proxy support for later urllib2 auto use this proxy
+    
+    Note:
+    1. tmp not support username and password
+    2. after this init, later urllib2.urlopen will automatically use this proxy
+    """
+
+    proxyHandler = urllib2.ProxyHandler(singleProxyDict);
+    #print "proxyHandler=",proxyHandler;
+    proxyOpener = urllib2.build_opener(proxyHandler);
+    #print "proxyOpener=",proxyOpener;
+    urllib2.install_opener(proxyOpener);
+    
+    return;
+    
+def initProxyAndCookie(singleProxyDict = {}, localCookieFileName=None):
+    """Init proxy and cookie
+    
+    Note:
+    1. after this init, later urllib2.urlopen will auto, use proxy, auto handle cookies
+    2. for proxy, tmp not support username and password
+    """
+
+    proxyHandler = urllib2.ProxyHandler(singleProxyDict);
+    #print "proxyHandler=",proxyHandler;
+    
+    if(localCookieFileName):
+        gVal['cookieUseFile'] = True;
+        #print "use cookie file";
+        
+        #gVal['cj'] = cookielib.FileCookieJar(localCookieFileName); #NotImplementedError
+        gVal['cj'] = cookielib.LWPCookieJar(localCookieFileName); # prefer use this
+        #gVal['cj'] = cookielib.MozillaCookieJar(localCookieFileName); # second consideration
+        #create cookie file
+        gVal['cj'].save();
+    else:
+        #print "not use cookie file";
+        gVal['cookieUseFile'] = False;
+        
+        gVal['cj'] = cookielib.CookieJar();
+
+    proxyAndCookieOpener = urllib2.build_opener(urllib2.HTTPCookieProcessor(gVal['cj']), proxyHandler);
+    #print "proxyAndCookieOpener=",proxyAndCookieOpener;
+    urllib2.install_opener(proxyAndCookieOpener);
+    
+    return;
+    
 #------------------------------------------------------------------------------
 def getCurrentCookies():
     """Return current cookies.
@@ -1135,9 +1186,14 @@ def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True, pos
         # -> response info not include above "Content-Encoding: gzip"
         # eg: http://blog.sina.com.cn/s/comment_730793bf010144j7_3.html
         # -> so here only decode when it is indeed is gziped data
-        if( ("Content-Encoding" in respInfo) and (respInfo['Content-Encoding'] == "gzip")) :
-            respHtml = zlib.decompress(respHtml, 16+zlib.MAX_WBITS);
-            #print "+++ after unzip, len(respHtml)=",len(respHtml);
+        
+        #Content-Encoding: deflate
+        if("Content-Encoding" in respInfo):
+            if("gzip" in respInfo['Content-Encoding']):
+                respHtml = zlib.decompress(respHtml, 16+zlib.MAX_WBITS);
+            
+            if("deflate" in respInfo['Content-Encoding']):
+                respHtml = zlib.decompress(respHtml, -zlib.MAX_WBITS);
 
     return respHtml;
 
