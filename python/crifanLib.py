@@ -257,15 +257,18 @@ def convertLocalToGmt(localTime) :
     return localTime - timedelta(hours=8);
 
 def decodeHtmlEntity(origHtml, decodedEncoding=""):
-    """Decode html entity (name/decimal code point/hex code point) into unicode char (and then encode to decodedEncoding encoding char if decodedEncoding is not empty)
-    eg: from &copy; or &#169; or &#xa9; or &#xA9; to unicode '©', then encode to decodedEncoding if decodedEncoding is not empty
+    """Decode html entity (name/decimal code point/hex code point) into unicode char
+    eg: from &copy; or &#169; or &#xa9; or &#xA9; to unicode '©'
     
     Note:
-    Some special char can NOT show in some encoding, such as ©  can NOT show in GBK
+    1. Some special char can NOT show in some encoding, such as ©  can NOT show in GBK
 
     Related knowledge:
     http://www.htmlhelp.com/reference/html40/entities/latin1.html
     http://www.htmlhelp.com/reference/html40/entities/special.html
+    
+    2.  if processed, then processed string is already is unicode !!!
+        if not processed, then still is previous string
     """
     decodedHtml = "";
 
@@ -330,13 +333,14 @@ def decodeHtmlEntity(origHtml, decodedEncoding=""):
 
     #logging.info("origHtml=%s", origHtml);
     decodedHtml = decodedCodepointHex;
-    #logging.info("decodedHtml=%s", decodedHtml);
-    
+    #logging.info("decodedHtml=%s", decodedHtml); #type(decodedHtml)= <type 'unicode'>
+
+    #here mabye is unicode string
     if(decodedEncoding):
-        # note: here decodedHtml is unicode
-        decodedHtml = decodedHtml.encode(decodedEncoding, 'ignore');
-        #print "after encode into decodedEncoding=%s, decodedHtml=%s"%(decodedEncoding, decodedHtml);
-        
+        # note: here decodedhtml is unicode
+        decodedhtml = decodedhtml.encode(decodedEncoding, 'ignore');
+        #print "after encode into decodedEncoding=%s, decodedhtml=%s"%(decodedEncoding, decodedhtml);
+    
     return decodedHtml;
 
 #------------------------------------------------------------------------------
@@ -1169,31 +1173,34 @@ def getUrlResponse(url, postDict={}, headerDict={}, timeout=0, useGzip=False, po
 def getUrlRespHtml(url, postDict={}, headerDict={}, timeout=0, useGzip=True, postDataDelimiter="&") :
     resp = getUrlResponse(url, postDict, headerDict, timeout, useGzip, postDataDelimiter);
     respHtml = resp.read();
-    if(useGzip) :
-        #print "---before unzip, len(respHtml)=",len(respHtml);
-        respInfo = resp.info();
-        
-        # Server: nginx/1.0.8
-        # Date: Sun, 08 Apr 2012 12:30:35 GMT
-        # Content-Type: text/html
-        # Transfer-Encoding: chunked
-        # Connection: close
-        # Vary: Accept-Encoding
-        # ...
-        # Content-Encoding: gzip
-        
-        # sometime, the request use gzip,deflate, but actually returned is un-gzip html
-        # -> response info not include above "Content-Encoding: gzip"
-        # eg: http://blog.sina.com.cn/s/comment_730793bf010144j7_3.html
-        # -> so here only decode when it is indeed is gziped data
-        
-        #Content-Encoding: deflate
-        if("Content-Encoding" in respInfo):
-            if("gzip" in respInfo['Content-Encoding']):
-                respHtml = zlib.decompress(respHtml, 16+zlib.MAX_WBITS);
-            
-            if("deflate" in respInfo['Content-Encoding']):
-                respHtml = zlib.decompress(respHtml, -zlib.MAX_WBITS);
+    
+    #here, maybe, even if not send Accept-Encoding: gzip, deflate
+    #but still response gzip or deflate, so directly do undecompress
+    #if(useGzip) :
+    
+    #print "---before unzip, len(respHtml)=",len(respHtml);
+    respInfo = resp.info();
+    
+    # Server: nginx/1.0.8
+    # Date: Sun, 08 Apr 2012 12:30:35 GMT
+    # Content-Type: text/html
+    # Transfer-Encoding: chunked
+    # Connection: close
+    # Vary: Accept-Encoding
+    # ...
+    # Content-Encoding: gzip
+    
+    # sometime, the request use gzip,deflate, but actually returned is un-gzip html
+    # -> response info not include above "Content-Encoding: gzip"
+    # eg: http://blog.sina.com.cn/s/comment_730793bf010144j7_3.html
+    # -> so here only decode when it is indeed is gziped data
+    
+    #Content-Encoding: deflate
+    if("Content-Encoding" in respInfo):
+        if("gzip" == respInfo['Content-Encoding']):
+            respHtml = zlib.decompress(respHtml, 16+zlib.MAX_WBITS);
+        elif("deflate" == respInfo['Content-Encoding']):
+            respHtml = zlib.decompress(respHtml, -zlib.MAX_WBITS);
 
     return respHtml;
 
