@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v7.5
+ * v7.7
  * 
  * [update]
- * 2013-06-25
+ * 2013-07-10
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,11 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v7.7]
+ * 1. update getDomainAlexaRank, getDomainPageRank
+ * 2. add setProxy
+ * 3. update _getUrlResponse to support deflate
+ * 
  * [v7.5]
  * 1. update _getUrlResponse: ReadWriteTimeout, gUserAgent
  * 2. update getUrlRespHtml
@@ -117,7 +122,7 @@
 //#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
 #define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
 #define USE_DATAGRIDVIEW
-#define USE_JSON
+//#define USE_JSON
 
 
 using System;
@@ -179,7 +184,9 @@ public class crifanLib
     //Mozilla Firefox
     const string constUserAgent_Firefox = "Mozilla/5.0 (Windows; U; Windows NT 6.1; rv:1.9.2.6) Gecko/20100625 Firefox/3.6.6";
     private string gUserAgent;
-    
+
+    private WebProxy gProxy = null;
+
     //detault values:
     //getUrlResponse
     private const Dictionary<string, string> defHeaderDict = null;
@@ -235,6 +242,9 @@ public class crifanLib
 #if USE_GETURLRESPONSE_BW
         gBgwDownload = new BackgroundWorker();
 #endif
+
+        //debug
+        //gProxy = new WebProxy("127.0.0.1", 8087);
     }
 
     /*------------------------Private Functions------------------------------*/
@@ -1425,6 +1435,16 @@ public class crifanLib
     /*********************************************************************/
     /* HTTP */
     /*********************************************************************/
+    
+    /* set proxy
+     * Note:
+     * 1. current only support http proxy
+     * 2. current only support single proxy
+     */
+    public void setProxy(string proxyIp, int proxyPort)
+    {
+        gProxy = new WebProxy(proxyIp, proxyPort);
+    }
 
     /*
      * Note: currently support auto handle cookies
@@ -1480,9 +1500,10 @@ public class crifanLib
         req.UserAgent = gUserAgent;
 
         req.Headers["Accept-Encoding"] = "gzip, deflate";
-        req.AutomaticDecompression = DecompressionMethods.GZip;
+        //req.AutomaticDecompression = DecompressionMethods.GZip;
+        req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
-        req.Proxy = null;
+        req.Proxy = gProxy;
 
         if (timeout > 0)
         {
@@ -2119,7 +2140,7 @@ public class crifanLib
 
         try
         {
-            transRetHtml = getUrlRespHtml(googleTransUrl);
+            transRetHtml = getUrlRespHtml_multiTry(googleTransUrl);
             //[[["They say","他们是这样说的","","Tāmen shì zhèyàng shuō de"]],,"zh-CN",,[["They",[5],0,0,1000,0,1,0],["say",[6],1,0,1000,1,2,0]],[["他们 是",5,[["They",1000,0,0],["they are",0,0,0],["they were",0,0,0],["that they are",0,0,0],["they are the",0,0,0]],[[0,3]],"他们是这样说的"],["这样 说",6,[["say",1000,1,0],["said",0,1,0],["say so",0,1,0],["says",0,1,0],["say this",0,1,0]],[[3,6]],""]],,,[["zh-CN"]],1]
             
             if (extractSingleStr(@"\[\[\[""(.+?)"","".+?"",", transRetHtml, out translatedStr))
@@ -2160,7 +2181,7 @@ public class crifanLib
             queryUrl = "http://www.pagerankme.com/";
             postDict = new Dictionary<string, string>();
             postDict.Add("url", domainUrl);
-            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
+            respHtml = getUrlRespHtml_multiTry(queryUrl, postDict: postDict);
             //<a href="http://www.pagerankme.com" target="_blank" style="text-decoration:none;color:#000000;">PageRank 7</a>
             rankStr = "";
             if (extractSingleStr(@"<a href=""http://www\.pagerankme\.com"" target=""_blank"" style="".+?"">PageRank (\d+)</a>", respHtml, out rankStr))
@@ -2183,7 +2204,7 @@ public class crifanLib
             postDict.Add("domain", domainUrl);
             postDict.Add("Submit", "CHECK");
 
-            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
+            respHtml = getUrlRespHtml_multiTry(queryUrl, postDict: postDict);
 
             //<h3>Your Page Rank: 7/10
             rankStr = "";
@@ -2209,21 +2230,21 @@ public class crifanLib
             Dictionary<string, string> headerDict;
             //(1)to get cookies
             string pageRankMainUrl = "http://pagerank.webmasterhome.cn/";
-            tmpRespHtml = getUrlRespHtml(pageRankMainUrl);
+            tmpRespHtml = getUrlRespHtml_multiTry(pageRankMainUrl);
             //(2)ask page rank
             string firstBaseUrl = "http://pagerank.webmasterhome.cn/?domain=";
             //http://pagerank.webmasterhome.cn/?domain=answers.yahoo.com
             string firstWholeUrl = firstBaseUrl + noHttpPreDomainUrl;
             headerDict = new Dictionary<string, string>();
             headerDict.Add("referer", pageRankMainUrl);
-            tmpRespHtml = getUrlRespHtml(firstWholeUrl, headerDict: headerDict);
+            tmpRespHtml = getUrlRespHtml_multiTry(firstWholeUrl, headerDict: headerDict);
 
             string baseUrl = "http://pagerank.webmasterhome.cn/prLoading.asp?domain=";
             //http://pagerank.webmasterhome.cn/prLoading.asp?domain=answers.yahoo.com
             queryUrl = baseUrl + noHttpPreDomainUrl;
             headerDict = new Dictionary<string, string>();
             headerDict.Add("referer", firstWholeUrl);
-            respHtml = getUrlRespHtml(queryUrl, headerDict: headerDict);
+            respHtml = getUrlRespHtml_multiTry(queryUrl, headerDict: headerDict);
 
             //'<img src=\"http://primg.webmasterhome.cn/pr7.gif\" style=\"width:40px;height:5px;border:0px;\" alt=PageRank align=absmiddle> (7/10)'
             rankStr = "";
@@ -2265,7 +2286,7 @@ public class crifanLib
         {
             //Method 1: use http://www.searchbliss.com/rank.asp
             string mainUrl = "http://www.searchbliss.com/rank.asp";
-            respHtml = getUrlRespHtml(mainUrl);
+            respHtml = getUrlRespHtml_multiTry(mainUrl);
             //<input type="hidden" name="RAC" value="EIS">
             string accessCode = "";
             if (extractSingleStr(@"<input\s+type=""hidden""\s+name=""RAC""\s+value=""([A-Z]+)"">", respHtml, out accessCode))
@@ -2279,11 +2300,20 @@ public class crifanLib
                 postDict.Add("AC", accessCode);
                 postDict.Add("RAC", accessCode);
                 postDict.Add("rank", domainUrl);
-                respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
+                respHtml = getUrlRespHtml_multiTry(queryUrl, postDict: postDict);
                 //<a href="http://www.alexa.com/data/details/main/http://hubpages.com" target="_blank">444</a>
                 if (extractSingleStr(@"<a\s+href=""http://www\.alexa\.com/data/details/main/.+?""\s+target=""_blank"">(\d+)</a>", respHtml, out alexaRankStr))
                 {
-                    alexaRank = Int32.Parse(alexaRankStr);
+                    //alexaRank = Int32.Parse(alexaRankStr);
+                    if (Int32.TryParse(alexaRankStr, out alexaRank))
+                    {
+                        prevMethodFail = false;
+                    }
+                    else
+                    {
+                        prevMethodFail = true;
+                    }
+
                     prevMethodFail = false;
                 }
                 else
@@ -2303,14 +2333,14 @@ public class crifanLib
             //Method 2: use http://www.alexa.com/
             string tmpUrl = "http://www.alexa.com";
             //to get cookies
-            string tmpRespHtml = getUrlRespHtml(tmpUrl);
+            string tmpRespHtml = getUrlRespHtml_multiTry(tmpUrl);
             //then do work
             queryUrl = "http://www.alexa.com/search";
             //http://www.alexa.com/search?q=crifan.com&r=home_home&p=bigtop
             queryUrl += "?q=" + domainUrl;
             queryUrl += "&r=" + "home_home";
             queryUrl += "&p=" + "bigtop";
-            respHtml = getUrlRespHtml(queryUrl);
+            respHtml = getUrlRespHtml_multiTry(queryUrl);
 
             HtmlAgilityPack.HtmlDocument htmlDoc = htmlToHtmlDoc(respHtml);
             HtmlNode rootHtmlNode = htmlDoc.DocumentNode;
@@ -2330,15 +2360,24 @@ public class crifanLib
             //HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']/a]");
             //HtmlNodeCollection trafficHtmlNodes = rootHtmlNode.SelectNodes("//span/span[@class='traffic-stat-label']");
             HtmlNode trafficHtmlNode = rootHtmlNode.SelectSingleNode("//span/span[@class='traffic-stat-label']");
-            if (trafficHtmlNode.InnerText.StartsWith("Alexa Traffic Rank:"))
+            if ((trafficHtmlNode != null) && (trafficHtmlNode.InnerText.StartsWith("Alexa Traffic Rank:")))
             {
                 HtmlNode parentHtmlNode = trafficHtmlNode.ParentNode;
                 HtmlNode aHrefNode = parentHtmlNode.SelectSingleNode(".//a[@href]");
                 string tracfficNumberStr = aHrefNode.InnerText;
                 alexaRankStr = tracfficNumberStr.Trim().Replace(",", "");
-                alexaRank = Int32.Parse(alexaRankStr);
-
-                prevMethodFail = false;
+                                
+                //speical:
+                //"No Data"
+                //alexaRank = Int32.Parse(alexaRankStr);
+                if(Int32.TryParse(alexaRankStr, out alexaRank))
+                {
+                    prevMethodFail = false;
+                }
+                else
+                {
+                    prevMethodFail = true;
+                }
             }
             else
             {
@@ -2358,13 +2397,22 @@ public class crifanLib
             postDict.Add("domain", domainUrl);
             postDict.Add("Submit", "CHECK");
 
-            respHtml = getUrlRespHtml(queryUrl, postDict: postDict);
+            respHtml = getUrlRespHtml_multiTry(queryUrl, postDict: postDict);
 
             //<h2>Alexa Rank of <b>ANSWERS.YAHOO.COM</b> is : <b>4</b></h2>
             alexaRankStr = "";
             if (extractSingleStr(@"<h2>Alexa Rank of.+?is.+?(\d+).+?</h2>", respHtml, out alexaRankStr))
             {
-                alexaRank = Int32.Parse(alexaRankStr);
+                //alexaRank = Int32.Parse(alexaRankStr);
+                if (Int32.TryParse(alexaRankStr, out alexaRank))
+                {
+                    prevMethodFail = false;
+                }
+                else
+                {
+                    prevMethodFail = true;
+                }
+
                 prevMethodFail = false;
             }
             else
