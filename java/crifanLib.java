@@ -6,14 +6,18 @@
  * 1. implement crifan's common functions
  * 
  * [Version]
- * v1.0
- * 2013-04-27
+ * v1.2
+ * 2013-07-12
  * 
  * [History]
+ * [v1.2]
+ * 1. add calcTimeStart, calcTimeEnd
+ *
+ * [v1.0]
  * 1. add http related func and regex related func
  */
 
-package crifan.com;
+//package crifan.com;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -23,7 +27,9 @@ import java.io.InputStream;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -58,13 +64,42 @@ import org.apache.http.util.EntityUtils;
 //import android.app.Activity;
 
 public class crifanLib {
-	CookieStore localCookies = null;
+	private CookieStore localCookies = null;
+	//private HashMap<Object, Object> calcTimeKeyDict;
+	private HashMap<String, Long> calcTimeKeyDict;
+	//private Map<String, Long> calcTimeKeyDict;
 	
 	public crifanLib()
 	{
 		localCookies = new BasicCookieStore();
+		
+		calcTimeKeyDict = new HashMap<String, Long>();
 	}
 
+	/** start calculate time */
+	public long calcTimeStart(String uniqueKey)
+	{
+		long startMilliSec = 0;
+		startMilliSec = System.currentTimeMillis(); //1373525642597
+		calcTimeKeyDict.put(uniqueKey, startMilliSec); //{load_dd_file=1373525642597}
+		return startMilliSec;
+	}
+	
+	/** end calculate time */
+	public long calcTimeEnd(String uniqueKey)
+	{
+		long endMilliSec = System.currentTimeMillis(); //1373525686178
+		
+		long elapsedMilliSec = 0;
+		if(calcTimeKeyDict.containsKey(uniqueKey))
+		{
+			long startMilliSec = calcTimeKeyDict.get(uniqueKey); //1373525642597
+			elapsedMilliSec = endMilliSec - startMilliSec; //43581
+		}
+		
+		return elapsedMilliSec;
+	}
+	
     /** Get response from url, headerDict, postDict */
     public HttpResponse getUrlResponse(String url,
     							HttpParams headerParams,
