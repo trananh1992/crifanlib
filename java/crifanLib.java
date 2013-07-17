@@ -6,13 +6,19 @@
  * 1. implement crifan's common functions
  * 
  * [Version]
- * v1.2
- * 2013-07-12
+ * v1.4
+ * 2013-07-17
+ * 
+ * [Note]
+ * 1. need add apache http lib:
+ * 【已解决】Eclipse的java代码出错：The import org.apache cannot be resolved
+ * http://www.crifan.com/java_eclipse_the_import_org_apache_cannot_be_resolved/
  * 
  * [History]
- * [v1.2]
+ * [v1.4]
  * 1. add calcTimeStart, calcTimeEnd
- *
+ * 2. add dateToString, outputStringToFile
+ * 
  * [v1.0]
  * 1. add http related func and regex related func
  */
@@ -22,11 +28,14 @@
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -98,6 +107,35 @@ public class crifanLib {
 		}
 		
 		return elapsedMilliSec;
+	}
+	
+	/* format date value into string */
+	public String dateToString(Date date, String format)
+	{
+		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(format); 
+		String datetimeStr =simpleDateFormat.format(date);  //2013-07-08_033034
+		return datetimeStr;
+	}
+	
+	/* output string into file */
+	public boolean outputStringToFile(String strToOutput, String fullFilename)
+	{
+		boolean ouputOk = true;
+		
+        File newTextFile = new File(fullFilename);
+        FileWriter fw;
+        try {
+			fw = new FileWriter(newTextFile);
+	        fw.write(strToOutput);
+	        fw.close();
+        } catch (IOException e) {
+			// TODO Auto-generated catch block
+			//e.printStackTrace();
+        	
+        	ouputOk = false;
+		}
+        
+        return ouputOk;
 	}
 	
     /** Get response from url, headerDict, postDict */
