@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v7.7
+ * v7.8
  * 
  * [update]
- * 2013-07-10
+ * 2013-08-01
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v7.8]
+ * 1. update _getUrlResponse support variation of http headers
+ * 
  * [v7.7]
  * 1. update getDomainAlexaRank, getDomainPageRank
  * 2. add setProxy
@@ -120,8 +123,8 @@
 //comment out following macros if not use them
 #define USE_GETURLRESPONSE_BW //for getUrlResponse use backgroundworker version
 //#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
-#define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
-#define USE_DATAGRIDVIEW
+//#define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
+//#define USE_DATAGRIDVIEW
 //#define USE_JSON
 
 
@@ -1532,12 +1535,17 @@ public class crifanLib
                 string headerValue = "";
                 if (headerDict.TryGetValue(header, out headerValue))
                 {
+                    string lowecaseHeader = header.ToLower();
                     // following are allow the caller overwrite the default header setting
-                    if (header.ToLower() == "referer")
+                    if (lowecaseHeader == "referer")
                     {
                         req.Referer = headerValue;
                     }
-                    else if (header.ToLower() == "allowautoredirect")
+                    else if (
+                            (lowecaseHeader == "allow-autoredirect") ||
+                            (lowecaseHeader == "allowautoredirect") ||
+                            (lowecaseHeader == "allow autoredirect")
+                            )
                     {
                         bool isAllow = false;
                         if (bool.TryParse(headerValue, out isAllow))
@@ -1545,11 +1553,15 @@ public class crifanLib
                             req.AllowAutoRedirect = isAllow;
                         }
                     }
-                    else if (header.ToLower() == "accept")
+                    else if (lowecaseHeader == "accept")
                     {
                         req.Accept = headerValue;
                     }
-                    else if (header.ToLower() == "keepalive")
+                    else if (
+                            (lowecaseHeader == "keep-alive") ||
+                            (lowecaseHeader == "keepalive") ||
+                            (lowecaseHeader == "keep alive")
+                            )
                     {
                         bool isKeepAlive = false;
                         if (bool.TryParse(headerValue, out isKeepAlive))
@@ -1557,15 +1569,28 @@ public class crifanLib
                             req.KeepAlive = isKeepAlive;
                         }
                     }
-                    else if (header.ToLower() == "accept-language")
+                    else if (
+                            (lowecaseHeader == "accept-language") ||
+                            (lowecaseHeader == "acceptlanguage") ||
+                            (lowecaseHeader == "accept-language")
+                            )
+
                     {
                         req.Headers["Accept-Language"] = headerValue;
                     }
-                    else if (header.ToLower() == "useragent")
+                    else if (
+                            (lowecaseHeader == "user-agent") ||
+                            (lowecaseHeader == "useragent") ||
+                            (lowecaseHeader == "user agent")
+                            )
                     {
                         req.UserAgent = headerValue;
                     }
-                    else if (header.ToLower() == "content-type")
+                    else if (
+                            (lowecaseHeader == "content-type") ||
+                            (lowecaseHeader == "contenttype") ||
+                            (lowecaseHeader == "content type")
+                            )
                     {
                         req.ContentType = headerValue;
                     }
