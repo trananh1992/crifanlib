@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v7.8
+ * v7.9
  * 
  * [update]
- * 2013-08-01
+ * 2013-08-20
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v7.9]
+ * 1. change some code location.
+ * 
  * [v7.8]
  * 1. update _getUrlResponse support variation of http headers
  * 
@@ -284,6 +287,280 @@ public class crifanLib
         return replacedComma;
     }
 
+    //replace "0A" (in \x0A) into '\n'
+    private string _replaceEscapeSequenceToChar(Match foundEscapeSequence)
+    {
+        char[] hexValues = new char[2];
+        //string hexChars = foundEscapeSequence.Value.ToString();
+        string matchedEscape = foundEscapeSequence.ToString();
+        hexValues[0] = matchedEscape[2];
+        hexValues[1] = matchedEscape[3];
+        string hexValueString = new string(hexValues);
+        int convertedInt = int.Parse(hexValueString, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo);
+        char hexChar = Convert.ToChar(convertedInt);
+        string hexStr = hexChar.ToString();
+        return hexStr;
+    }
+    
+    //check whether need add/retain this cookie
+    // not add for:
+    // ck is null or ck name is null
+    // domain is null and curDomain is not set
+    // expired and retainExpiredCookie==false
+    private bool needAddThisCookie(Cookie ck, string curDomain)
+    {
+        bool needAdd = false;
+
+        if ((ck == null) || (ck.Name == ""))
+        {
+            needAdd = false;
+        }
+        else
+        {
+            if (ck.Domain != "")
+            {
+                needAdd = true;
+            }
+            else// ck.Domain == ""
+            {
+                if (curDomain != "")
+                {
+                    ck.Domain = curDomain;
+                    needAdd = true;
+                }
+                else // curDomain == ""
+                {
+                    // not set current domain, omit this
+                    // should not add empty domain cookie, for this will lead execute CookieContainer.Add() fail !!!
+                    needAdd = false;
+                }
+            }
+        }
+
+        return needAdd;
+    }
+
+#if USE_GETURLRESPONSE_BW
+    private void getUrlResponse_bw(string url,
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout)
+    {
+        // Create a background thread
+        BackgroundWorker bgwGetUrlResp = new BackgroundWorker();
+        bgwGetUrlResp.DoWork += new DoWorkEventHandler(bgwGetUrlResp_DoWork);
+        bgwGetUrlResp.RunWorkerCompleted += new RunWorkerCompletedEventHandler( bgwGetUrlResp_RunWorkerCompleted );
+
+        //init
+        bNotCompleted_resp = true;
+            
+        // run in another thread
+        object paraObj = new object[] { url, headerDict, postDict, timeout, postDataStr, readWriteTimeout };
+        bgwGetUrlResp.RunWorkerAsync(paraObj);
+    }
+
+    private void bgwGetUrlResp_DoWork(object sender, DoWorkEventArgs e)
+    {
+        object[] paraObj = (object[])e.Argument;
+        string url = (string)paraObj[0];
+        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[1];
+        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[2];
+        int timeout = (int)paraObj[3];
+        string postDataStr = (string)paraObj[4];
+        int readWriteTimeout = (int)paraObj[5];
+
+        e.Result = _getUrlResponse(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
+    }
+
+    //void m_bgWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
+    //{
+    //    bRespNotCompleted = true;
+    //}
+
+    private void bgwGetUrlResp_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+    {
+        // The background process is complete. We need to inspect
+        // our response to see if an error occurred, a cancel was
+        // requested or if we completed successfully.
+
+        // Check to see if an error occurred in the
+        // background process.
+        if (e.Error != null)
+        {
+            //MessageBox.Show(e.Error.Message);
+            return;
+        }
+
+        // Check to see if the background process was cancelled.
+        if (e.Cancelled)
+        {
+            //MessageBox.Show("Cancelled ...");
+        }
+        else
+        {
+            bNotCompleted_resp = false;
+
+            // Everything completed normally.
+            // process the response using e.Result
+            //MessageBox.Show("Completed...");
+            gCurResp = (HttpWebResponse)e.Result;
+        }
+    }
+#endif
+
+
+    private void getUrlRespStreamBytes_bw(ref Byte[] respBytesBuf,
+                                string url,
+                                Dictionary<string, string> headerDict,
+                                Dictionary<string, string> postDict,
+                                int timeout,
+                                Action<int> funcUpdateProgress)
+    {
+        // Create a background thread
+        gBgwDownload = new BackgroundWorker();
+        gBgwDownload.DoWork += bgwDownload_DoWork;
+        gBgwDownload.RunWorkerCompleted += bgwDownload_RunWorkerCompleted;
+        gBgwDownload.WorkerReportsProgress = true;
+        gBgwDownload.ProgressChanged += bgwDownload_ProgressChanged;
+
+        //init
+        bNotCompleted_download = true;
+        gFuncUpdateProgress = funcUpdateProgress;
+        
+        // run in another thread
+        object paraObj = new object[] {respBytesBuf, url, headerDict, postDict, timeout};
+        gBgwDownload.RunWorkerAsync(paraObj);
+    }
+
+    private void bgwDownload_ProgressChanged(object sender, ProgressChangedEventArgs e)
+    {
+        if (gFuncUpdateProgress != null)
+        {
+            // This function fires on the UI thread so it's safe to edit
+            // the UI control directly, no funny business with Control.Invoke.
+            // Update the progressBar with the integer supplied to us from the
+            // ReportProgress() function.  Note, e.UserState is a "tag" property
+            // that can be used to send other information from the
+            // BackgroundThread to the UI thread.
+
+            gFuncUpdateProgress(e.ProgressPercentage);
+        }
+    }
+
+    private void bgwDownload_DoWork(object sender, DoWorkEventArgs e)
+    {
+    //    // The sender is the BackgroundWorker object we need it to
+    //    // report progress and check for cancellation.
+    //    BackgroundWorker gBgwDownload = sender as BackgroundWorker;
+
+        object[] paraObj = (object[])e.Argument;
+        Byte[] respBytesBuf = (Byte[])paraObj[0];
+        string url = (string)paraObj[1];
+        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[2];
+        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[3];
+        int timeout = (int)paraObj[4];
+
+        //e.Result = _getUrlRespStreamBytes(ref respBytesBuf, url, headerDict, postDict, timeout);
+        
+
+        int curReadoutLen;
+        int realReadoutLen = 0;
+        int curBufPos = 0;
+        
+        long totalLength = 0;
+        long currentLength = 0;
+
+        try
+        {
+            //HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout);
+            HttpWebResponse resp = getUrlResponse(url, headerDict, postDict);
+            long expectReadoutLen = resp.ContentLength;
+
+            totalLength = expectReadoutLen;
+            currentLength = 0;
+
+            Stream binStream = resp.GetResponseStream();
+            //int streamDataLen  = (int)binStream.Length; // erro: not support seek operation
+
+            do
+            {
+                //let up layer update its UI, otherwise up layer UI will no response during this func exec time
+                //now has make this function to call by backgroundworker, so not need this to update UI
+                //System.Windows.Forms.Application.DoEvents();
+
+                // here download logic is:
+                // once request, return some data
+                // request multiple time, until no more data
+                curReadoutLen = binStream.Read(respBytesBuf, curBufPos, (int)expectReadoutLen);
+                if (curReadoutLen > 0)
+                {
+                    curBufPos += curReadoutLen;
+
+                    currentLength = curBufPos;
+
+                    expectReadoutLen = expectReadoutLen - curReadoutLen;
+
+                    realReadoutLen += curReadoutLen;
+
+                    int currentPercent = (int)((currentLength * 100) / totalLength);
+                    
+                    if (currentPercent < 0)
+                    {
+                        currentPercent = 0;
+                    }
+
+                    if (currentPercent > 100)
+                    {
+                        currentPercent = 100;
+                    }
+
+                    gBgwDownload.ReportProgress(currentPercent);
+                }
+            } while (curReadoutLen > 0);
+        }
+        catch (Exception ex)
+        {
+            string errorMessage = ex.Message;
+            realReadoutLen = -1;
+        }
+
+        //return realReadoutLen;
+        
+        e.Result = realReadoutLen;
+        //gBgwDownload.ReportProgress(100);
+    }
+
+    private void bgwDownload_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+    {
+        // The background process is complete. We need to inspect
+        // our response to see if an error occurred, a cancel was
+        // requested or if we completed successfully.
+
+        // Check to see if an error occurred in the
+        // background process.
+        if (e.Error != null)
+        {
+            //MessageBox.Show(e.Error.Message);
+            return;
+        }
+
+        // Check to see if the background process was cancelled.
+        if (e.Cancelled)
+        {
+            //MessageBox.Show("Cancelled ...");
+        }
+        else
+        {
+            bNotCompleted_download = false;
+
+            // Everything completed normally.
+            // process the response using e.Result
+            //MessageBox.Show("Completed...");
+            gRealReadoutLen = (int)e.Result;
+        }
+    }
 
     /*------------------------Public Functions-------------------------------*/
 
@@ -478,6 +755,41 @@ public class crifanLib
         return st;
     }
 
+    //parse xxx in "new Date(xxx)" of javascript to C# DateTime
+    //input example:
+    //new Date(1329198041411.84) / new Date(1329440307389.9) / new Date(1329440307483)
+    public bool parseJsNewDate(string newDateStr, out DateTime parsedDatetime)
+    {
+        bool parseOK = false;
+        parsedDatetime = new DateTime();
+
+        if ((newDateStr != "") && (newDateStr.Trim() != ""))
+        {
+            string dateValue = "";
+            if (extractSingleStr(@".*new\sDate\((.+?)\).*", newDateStr, out dateValue))
+            {
+                double doubleVal = 0.0;
+                if (Double.TryParse(dateValue, out doubleVal))
+                {
+                    // try whether is double/int64 milliSecSinceEpoch
+                    parsedDatetime = milliSecToDateTime(doubleVal);
+                    parseOK = true;
+                }
+                else if (DateTime.TryParse(dateValue, out parsedDatetime))
+                {
+                    // try normal DateTime string
+                    //refer: http://www.w3schools.com/js/js_obj_date.asp
+                    //October 13, 1975 11:13:00
+                    //79,5,24 / 79,5,24,11,33,0
+                    //1329198041411.3344 / 1329198041411.84 / 1329198041411
+                    parseOK = true;
+                }
+            }
+        }
+
+        return parseOK;
+    }
+    
     /*********************************************************************/
     /* String */
     /*********************************************************************/
@@ -611,21 +923,6 @@ public class crifanLib
         }
 
         return validFileOrPathStr;
-    }
-
-    //replace "0A" (in \x0A) into '\n'
-    private string _replaceEscapeSequenceToChar(Match foundEscapeSequence)
-    {
-        char[] hexValues = new char[2];
-        //string hexChars = foundEscapeSequence.Value.ToString();
-        string matchedEscape = foundEscapeSequence.ToString();
-        hexValues[0] = matchedEscape[2];
-        hexValues[1] = matchedEscape[3];
-        string hexValueString = new string(hexValues);
-        int convertedInt = int.Parse(hexValueString, NumberStyles.HexNumber, NumberFormatInfo.InvariantInfo);
-        char hexChar = Convert.ToChar(convertedInt);
-        string hexStr = hexChar.ToString();
-        return hexStr;
     }
 
     //convert \xXX into corresponding char
@@ -977,43 +1274,6 @@ public class crifanLib
         return parsedOk;
     }//parseSingleCookie
 
-    //check whether need add/retain this cookie
-    // not add for:
-    // ck is null or ck name is null
-    // domain is null and curDomain is not set
-    // expired and retainExpiredCookie==false
-    private bool needAddThisCookie(Cookie ck, string curDomain)
-    {
-        bool needAdd = false;
-
-        if ((ck == null) || (ck.Name == ""))
-        {
-            needAdd = false;
-        }
-        else
-        {
-            if (ck.Domain != "")
-            {
-                needAdd = true;
-            }
-            else// ck.Domain == ""
-            {
-                if (curDomain != "")
-                {
-                    ck.Domain = curDomain;
-                    needAdd = true;
-                }
-                else // curDomain == ""
-                {
-                    // not set current domain, omit this
-                    // should not add empty domain cookie, for this will lead execute CookieContainer.Add() fail !!!
-                    needAdd = false;
-                }
-            }
-        }
-
-        return needAdd;
-    }
 
     // parse the Set-Cookie string (in http response header) to cookies
     // Note: auto omit to parse the abnormal cookie string
@@ -1052,41 +1312,6 @@ public class crifanLib
     public CookieCollection parseSetCookie(string setCookieStr)
     {
         return parseSetCookie(setCookieStr, "");
-    }
-
-    //parse xxx in "new Date(xxx)" of javascript to C# DateTime
-    //input example:
-    //new Date(1329198041411.84) / new Date(1329440307389.9) / new Date(1329440307483)
-    public bool parseJsNewDate(string newDateStr, out DateTime parsedDatetime)
-    {
-        bool parseOK = false;
-        parsedDatetime = new DateTime();
-
-        if ((newDateStr != "") && (newDateStr.Trim() != ""))
-        {
-            string dateValue = "";
-            if (extractSingleStr(@".*new\sDate\((.+?)\).*", newDateStr, out dateValue))
-            {
-                double doubleVal = 0.0;
-                if (Double.TryParse(dateValue, out doubleVal))
-                {
-                    // try whether is double/int64 milliSecSinceEpoch
-                    parsedDatetime = milliSecToDateTime(doubleVal);
-                    parseOK = true;
-                }
-                else if (DateTime.TryParse(dateValue, out parsedDatetime))
-                {
-                    // try normal DateTime string
-                    //refer: http://www.w3schools.com/js/js_obj_date.asp
-                    //October 13, 1975 11:13:00
-                    //79,5,24 / 79,5,24,11,33,0
-                    //1329198041411.3344 / 1329198041411.84 / 1329198041411
-                    parseOK = true;
-                }
-            }
-        }
-
-        return parseOK;
     }
 
     //parse Javascript string "$Cookie.setCookie(XXX);" to a cookie
@@ -1664,75 +1889,6 @@ public class crifanLib
         
         return resp;
     }
-#if USE_GETURLRESPONSE_BW
-    private void getUrlResponse_bw(string url,
-                                    Dictionary<string, string> headerDict = defHeaderDict,
-                                    Dictionary<string, string> postDict = defPostDict,
-                                    int timeout = defTimeout,
-                                    string postDataStr = defPostDataStr,
-                                    int readWriteTimeout = defReadWriteTimeout)
-    {
-        // Create a background thread
-        BackgroundWorker bgwGetUrlResp = new BackgroundWorker();
-        bgwGetUrlResp.DoWork += new DoWorkEventHandler(bgwGetUrlResp_DoWork);
-        bgwGetUrlResp.RunWorkerCompleted += new RunWorkerCompletedEventHandler( bgwGetUrlResp_RunWorkerCompleted );
-
-        //init
-        bNotCompleted_resp = true;
-            
-        // run in another thread
-        object paraObj = new object[] { url, headerDict, postDict, timeout, postDataStr, readWriteTimeout };
-        bgwGetUrlResp.RunWorkerAsync(paraObj);
-    }
-
-    private void bgwGetUrlResp_DoWork(object sender, DoWorkEventArgs e)
-    {
-        object[] paraObj = (object[])e.Argument;
-        string url = (string)paraObj[0];
-        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[1];
-        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[2];
-        int timeout = (int)paraObj[3];
-        string postDataStr = (string)paraObj[4];
-        int readWriteTimeout = (int)paraObj[5];
-
-        e.Result = _getUrlResponse(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
-    }
-
-    //void m_bgWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
-    //{
-    //    bRespNotCompleted = true;
-    //}
-
-    private void bgwGetUrlResp_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-    {
-        // The background process is complete. We need to inspect
-        // our response to see if an error occurred, a cancel was
-        // requested or if we completed successfully.
-
-        // Check to see if an error occurred in the
-        // background process.
-        if (e.Error != null)
-        {
-            //MessageBox.Show(e.Error.Message);
-            return;
-        }
-
-        // Check to see if the background process was cancelled.
-        if (e.Cancelled)
-        {
-            //MessageBox.Show("Cancelled ...");
-        }
-        else
-        {
-            bNotCompleted_resp = false;
-
-            // Everything completed normally.
-            // process the response using e.Result
-            //MessageBox.Show("Completed...");
-            gCurResp = (HttpWebResponse)e.Result;
-        }
-    }
-#endif
 
     /* get url's response
     * */
@@ -1744,6 +1900,7 @@ public class crifanLib
                                         int readWriteTimeout = defReadWriteTimeout)
     {
 #if USE_GETURLRESPONSE_BW
+        //BackgroundWorker Version getUrlResponse
         HttpWebResponse localCurResp = null;
         getUrlResponse_bw(url, headerDict, postDict, timeout, postDataStr, readWriteTimeout);
         while (bNotCompleted_resp)
@@ -1757,6 +1914,7 @@ public class crifanLib
 
         return localCurResp;
 #else
+        //non-BackgroundWorker Version getUrlResponse
         return _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);;
 #endif
     }
@@ -1938,157 +2096,6 @@ public class crifanLib
 
     //    return realReadoutLen;
     //}
-    
-    private void getUrlRespStreamBytes_bw(ref Byte[] respBytesBuf,
-                                string url,
-                                Dictionary<string, string> headerDict,
-                                Dictionary<string, string> postDict,
-                                int timeout,
-                                Action<int> funcUpdateProgress)
-    {
-        // Create a background thread
-        gBgwDownload = new BackgroundWorker();
-        gBgwDownload.DoWork += bgwDownload_DoWork;
-        gBgwDownload.RunWorkerCompleted += bgwDownload_RunWorkerCompleted;
-        gBgwDownload.WorkerReportsProgress = true;
-        gBgwDownload.ProgressChanged += bgwDownload_ProgressChanged;
-
-        //init
-        bNotCompleted_download = true;
-        gFuncUpdateProgress = funcUpdateProgress;
-        
-        // run in another thread
-        object paraObj = new object[] {respBytesBuf, url, headerDict, postDict, timeout};
-        gBgwDownload.RunWorkerAsync(paraObj);
-    }
-
-    private void bgwDownload_ProgressChanged(object sender, ProgressChangedEventArgs e)
-    {
-        if (gFuncUpdateProgress != null)
-        {
-            // This function fires on the UI thread so it's safe to edit
-            // the UI control directly, no funny business with Control.Invoke.
-            // Update the progressBar with the integer supplied to us from the
-            // ReportProgress() function.  Note, e.UserState is a "tag" property
-            // that can be used to send other information from the
-            // BackgroundThread to the UI thread.
-
-            gFuncUpdateProgress(e.ProgressPercentage);
-        }
-    }
-
-    private void bgwDownload_DoWork(object sender, DoWorkEventArgs e)
-    {
-    //    // The sender is the BackgroundWorker object we need it to
-    //    // report progress and check for cancellation.
-    //    BackgroundWorker gBgwDownload = sender as BackgroundWorker;
-
-        object[] paraObj = (object[])e.Argument;
-        Byte[] respBytesBuf = (Byte[])paraObj[0];
-        string url = (string)paraObj[1];
-        Dictionary<string, string> headerDict = (Dictionary<string, string>)paraObj[2];
-        Dictionary<string, string> postDict = (Dictionary<string, string>)paraObj[3];
-        int timeout = (int)paraObj[4];
-
-        //e.Result = _getUrlRespStreamBytes(ref respBytesBuf, url, headerDict, postDict, timeout);
-        
-
-        int curReadoutLen;
-        int realReadoutLen = 0;
-        int curBufPos = 0;
-        
-        long totalLength = 0;
-        long currentLength = 0;
-
-        try
-        {
-            //HttpWebResponse resp = getUrlResponse(url, headerDict, postDict, timeout);
-            HttpWebResponse resp = getUrlResponse(url, headerDict, postDict);
-            long expectReadoutLen = resp.ContentLength;
-
-            totalLength = expectReadoutLen;
-            currentLength = 0;
-
-            Stream binStream = resp.GetResponseStream();
-            //int streamDataLen  = (int)binStream.Length; // erro: not support seek operation
-
-            do
-            {
-                //let up layer update its UI, otherwise up layer UI will no response during this func exec time
-                //now has make this function to call by backgroundworker, so not need this to update UI
-                //System.Windows.Forms.Application.DoEvents();
-
-                // here download logic is:
-                // once request, return some data
-                // request multiple time, until no more data
-                curReadoutLen = binStream.Read(respBytesBuf, curBufPos, (int)expectReadoutLen);
-                if (curReadoutLen > 0)
-                {
-                    curBufPos += curReadoutLen;
-
-                    currentLength = curBufPos;
-
-                    expectReadoutLen = expectReadoutLen - curReadoutLen;
-
-                    realReadoutLen += curReadoutLen;
-
-                    int currentPercent = (int)((currentLength * 100) / totalLength);
-                    
-                    if (currentPercent < 0)
-                    {
-                        currentPercent = 0;
-                    }
-
-                    if (currentPercent > 100)
-                    {
-                        currentPercent = 100;
-                    }
-
-                    gBgwDownload.ReportProgress(currentPercent);
-                }
-            } while (curReadoutLen > 0);
-        }
-        catch (Exception ex)
-        {
-            string errorMessage = ex.Message;
-            realReadoutLen = -1;
-        }
-
-        //return realReadoutLen;
-        
-        e.Result = realReadoutLen;
-        //gBgwDownload.ReportProgress(100);
-    }
-
-    private void bgwDownload_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
-    {
-        // The background process is complete. We need to inspect
-        // our response to see if an error occurred, a cancel was
-        // requested or if we completed successfully.
-
-        // Check to see if an error occurred in the
-        // background process.
-        if (e.Error != null)
-        {
-            //MessageBox.Show(e.Error.Message);
-            return;
-        }
-
-        // Check to see if the background process was cancelled.
-        if (e.Cancelled)
-        {
-            //MessageBox.Show("Cancelled ...");
-        }
-        else
-        {
-            bNotCompleted_download = false;
-
-            // Everything completed normally.
-            // process the response using e.Result
-            //MessageBox.Show("Completed...");
-            gRealReadoutLen = (int)e.Result;
-        }
-    }
     
     public int getUrlRespStreamBytes(ref Byte[] respBytesBuf,
                                 string url,
@@ -2455,8 +2462,26 @@ public class crifanLib
 
 
     /*********************************************************************/
-    /* File */
+    /* File/Folder */
     /*********************************************************************/
+
+    public string getSaveFolder(FolderBrowserDialog fbdSave)
+    {
+        string saveFolderPath = "";
+        //string saveFolderPath = System.Environment.CurrentDirectory;
+        //fbdSaveFolder.SelectedPath = System.Environment.CurrentDirectory;
+        DialogResult saveFolderResult = fbdSave.ShowDialog();
+        if (saveFolderResult == System.Windows.Forms.DialogResult.OK)
+        {
+            saveFolderPath = fbdSave.SelectedPath;
+        }
+        else if (saveFolderResult == System.Windows.Forms.DialogResult.Cancel)
+        {
+            saveFolderPath = "";
+        }
+
+        return saveFolderPath;
+    }
 
     //save binary bytes into file
     public bool saveBytesToFile(string fileToSave, ref Byte[] bytes, int dataLen, out string errStr)
@@ -3177,28 +3202,7 @@ public class crifanLib
         csvStreamWriter.Close();        
     }
 #endif
-    
-    /*********************************************************************/
-    /* File/Folder */
-    /*********************************************************************/
-    public string getSaveFolder(FolderBrowserDialog fbdSave)
-    {
-        string saveFolderPath = "";
-        //string saveFolderPath = System.Environment.CurrentDirectory;
-        //fbdSaveFolder.SelectedPath = System.Environment.CurrentDirectory;
-        DialogResult saveFolderResult = fbdSave.ShowDialog();
-        if (saveFolderResult == System.Windows.Forms.DialogResult.OK)
-        {
-            saveFolderPath = fbdSave.SelectedPath;
-        }
-        else if (saveFolderResult == System.Windows.Forms.DialogResult.Cancel)
-        {
-            saveFolderPath = "";
-        }
 
-        return saveFolderPath;
-    }
-    
     /*********************************************************************/
     /* JSON */
     /*********************************************************************/
