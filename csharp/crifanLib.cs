@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v7.9
+ * v8.0
  * 
  * [update]
- * 2013-08-20
+ * 2013-08-21
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,10 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v8.0]
+ * 1. fix typo "accept-language" to "accept language"
+ * 2. move some code location
+ *
  * [v7.9]
  * 1. change some code location.
  * 
@@ -83,7 +87,7 @@
  * 2. add definition for bw version getUrlResponse
  * 
  * [v4.8]
- * 1. update quoteParas to support space to %20
+ * 1. update _quoteParas to support space to %20
  * 2. add getSaveFolder
  * 3. add new method for getDomainAlexaRank
  * 
@@ -338,6 +342,239 @@ public class crifanLib
         }
 
         return needAdd;
+    }
+
+    //quote the input dict values
+    //note: the return result for first para no '&'
+    private string _quoteParas(Dictionary<string, string> paras, bool spaceToPercent20 = true)
+    {
+        string quotedParas = "";
+        bool isFirst = true;
+        string val = "";
+        foreach (string para in paras.Keys)
+        {
+            if (paras.TryGetValue(para, out val))
+            {
+                string encodedVal = "";
+                if (spaceToPercent20)
+                {
+                    //encodedVal = HttpUtility.UrlPathEncode(val);
+                    //encodedVal = Uri.EscapeDataString(val);
+                    //encodedVal = Uri.EscapeUriString(val);
+                    encodedVal = HttpUtility.UrlEncode(val).Replace("+", "%20");
+                }
+                else
+                {
+                    encodedVal = HttpUtility.UrlEncode(val); //space to +
+                }
+
+                if (isFirst)
+                {
+                    isFirst = false;
+                    quotedParas += para + "=" + encodedVal;
+                }
+                else
+                {
+                    quotedParas += "&" + para + "=" + encodedVal;
+                }
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        return quotedParas;
+    }
+
+    /* get url's response
+     * */
+    private HttpWebResponse _getUrlResponse(string url,
+                                    Dictionary<string, string> headerDict = defHeaderDict,
+                                    Dictionary<string, string> postDict = defPostDict,
+                                    int timeout = defTimeout,
+                                    string postDataStr = defPostDataStr,
+                                    int readWriteTimeout = defReadWriteTimeout)
+    {
+        //CookieCollection parsedCookies;
+
+        HttpWebResponse resp = null;
+
+        HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+
+        req.AllowAutoRedirect = true;
+        req.Accept = "*/*";
+
+        //req.ContentType = "text/plain";
+
+        //const string gAcceptLanguage = "en-US"; // zh-CN/en-US
+        //req.Headers["Accept-Language"] = gAcceptLanguage;
+
+        req.KeepAlive = true;
+
+        req.UserAgent = gUserAgent;
+
+        req.Headers["Accept-Encoding"] = "gzip, deflate";
+        //req.AutomaticDecompression = DecompressionMethods.GZip;
+        req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
+
+        req.Proxy = gProxy;
+
+        if (timeout > 0)
+        {
+            req.Timeout = timeout;
+        }
+
+        if (readWriteTimeout > 0)
+        {
+            //default ReadWriteTimeout is 300000=300 seconds = 5 minutes !!!
+            //too long, so here change to 300000 = 30 seconds
+            //for support TimeOut for later StreamReader's ReadToEnd
+            req.ReadWriteTimeout = readWriteTimeout;
+        }
+
+        if (curCookies != null)
+        {
+            req.CookieContainer = new CookieContainer();
+            req.CookieContainer.PerDomainCapacity = 40; // following will exceed max default 20 cookie per domain
+            req.CookieContainer.Add(curCookies);
+        }
+
+        if ((headerDict != null) && (headerDict.Count > 0))
+        {
+            foreach (string header in headerDict.Keys)
+            {
+                string headerValue = "";
+                if (headerDict.TryGetValue(header, out headerValue))
+                {
+                    string lowecaseHeader = header.ToLower();
+                    // following are allow the caller overwrite the default header setting
+                    if (lowecaseHeader == "referer")
+                    {
+                        req.Referer = headerValue;
+                    }
+                    else if (
+                            (lowecaseHeader == "allow-autoredirect") ||
+                            (lowecaseHeader == "allowautoredirect") ||
+                            (lowecaseHeader == "allow autoredirect")
+                            )
+                    {
+                        bool isAllow = false;
+                        if (bool.TryParse(headerValue, out isAllow))
+                        {
+                            req.AllowAutoRedirect = isAllow;
+                        }
+                    }
+                    else if (lowecaseHeader == "accept")
+                    {
+                        req.Accept = headerValue;
+                    }
+                    else if (
+                            (lowecaseHeader == "keep-alive") ||
+                            (lowecaseHeader == "keepalive") ||
+                            (lowecaseHeader == "keep alive")
+                            )
+                    {
+                        bool isKeepAlive = false;
+                        if (bool.TryParse(headerValue, out isKeepAlive))
+                        {
+                            req.KeepAlive = isKeepAlive;
+                        }
+                    }
+                    else if (
+                            (lowecaseHeader == "accept-language") ||
+                            (lowecaseHeader == "acceptlanguage") ||
+                            (lowecaseHeader == "accept language")
+                            )
+
+                    {
+                        req.Headers["Accept-Language"] = headerValue;
+                    }
+                    else if (
+                            (lowecaseHeader == "user-agent") ||
+                            (lowecaseHeader == "useragent") ||
+                            (lowecaseHeader == "user agent")
+                            )
+                    {
+                        req.UserAgent = headerValue;
+                    }
+                    else if (
+                            (lowecaseHeader == "content-type") ||
+                            (lowecaseHeader == "contenttype") ||
+                            (lowecaseHeader == "content type")
+                            )
+                    {
+                        req.ContentType = headerValue;
+                    }
+                    else
+                    {
+                        req.Headers[header] = headerValue;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        if (((postDict != null) && (postDict.Count > 0)) || (!string.IsNullOrEmpty(postDataStr)))
+        {
+            req.Method = "POST";
+            if (req.ContentType == null)
+            {
+                req.ContentType = "application/x-www-form-urlencoded";
+            }
+
+            if ((postDict != null) && (postDict.Count > 0))
+            {
+                postDataStr = _quoteParas(postDict);
+            }
+                        
+            //byte[] postBytes = Encoding.GetEncoding("utf-8").GetBytes(postData);
+            byte[] postBytes = Encoding.UTF8.GetBytes(postDataStr);
+            req.ContentLength = postBytes.Length;
+
+            try
+            {
+                Stream postDataStream = req.GetRequestStream();
+                postDataStream.Write(postBytes, 0, postBytes.Length);
+                postDataStream.Close();
+            }
+            catch (WebException webEx)
+            {
+                //for prev has set ReadWriteTimeout
+                //so here also may timeout
+                if (webEx.Status == WebExceptionStatus.Timeout)
+                {
+                    req = null;
+                }
+            }
+        }
+        else
+        {
+            req.Method = "GET";
+        }
+
+        if (req != null)
+        {
+            //may timeout, has fixed in:
+            //http://www.crifan.com/fixed_problem_sometime_httpwebrequest_getresponse_timeout/
+            try
+            {
+                resp = (HttpWebResponse)req.GetResponse();
+                updateLocalCookies(resp.Cookies, ref curCookies);
+            }
+            catch (WebException webEx)
+            {
+                if (webEx.Status == WebExceptionStatus.Timeout)
+                {
+                    resp = null;
+                }
+            }
+        }
+        
+        return resp;
     }
 
 #if USE_GETURLRESPONSE_BW
@@ -857,49 +1094,6 @@ public class crifanLib
         }
 
         return extractOK;
-    }
-
-    //quote the input dict values
-    //note: the return result for first para no '&'
-    public string quoteParas(Dictionary<string, string> paras, bool spaceToPercent20 = true)
-    {
-        string quotedParas = "";
-        bool isFirst = true;
-        string val = "";
-        foreach (string para in paras.Keys)
-        {
-            if (paras.TryGetValue(para, out val))
-            {
-                string encodedVal = "";
-                if (spaceToPercent20)
-                {
-                    //encodedVal = HttpUtility.UrlPathEncode(val);
-                    //encodedVal = Uri.EscapeDataString(val);
-                    //encodedVal = Uri.EscapeUriString(val);
-                    encodedVal = HttpUtility.UrlEncode(val).Replace("+", "%20");
-                }
-                else
-                {
-                    encodedVal = HttpUtility.UrlEncode(val); //space to +
-                }
-
-                if (isFirst)
-                {
-                    isFirst = false;
-                    quotedParas += para + "=" + encodedVal;
-                }
-                else
-                {
-                    quotedParas += "&" + para + "=" + encodedVal;
-                }
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        return quotedParas;
     }
 
     //remove invalid char in path and filename
@@ -1701,196 +1895,6 @@ public class crifanLib
     }
 
     /* get url's response
-     * */
-    public HttpWebResponse _getUrlResponse(string url,
-                                    Dictionary<string, string> headerDict = defHeaderDict,
-                                    Dictionary<string, string> postDict = defPostDict,
-                                    int timeout = defTimeout,
-                                    string postDataStr = defPostDataStr,
-                                    int readWriteTimeout = defReadWriteTimeout)
-    {
-        //CookieCollection parsedCookies;
-
-        HttpWebResponse resp = null;
-
-        HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
-
-        req.AllowAutoRedirect = true;
-        req.Accept = "*/*";
-
-        //req.ContentType = "text/plain";
-
-        //const string gAcceptLanguage = "en-US"; // zh-CN/en-US
-        //req.Headers["Accept-Language"] = gAcceptLanguage;
-
-        req.KeepAlive = true;
-
-        req.UserAgent = gUserAgent;
-
-        req.Headers["Accept-Encoding"] = "gzip, deflate";
-        //req.AutomaticDecompression = DecompressionMethods.GZip;
-        req.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
-
-        req.Proxy = gProxy;
-
-        if (timeout > 0)
-        {
-            req.Timeout = timeout;
-        }
-
-        if (readWriteTimeout > 0)
-        {
-            //default ReadWriteTimeout is 300000=300 seconds = 5 minutes !!!
-            //too long, so here change to 300000 = 30 seconds
-            //for support TimeOut for later StreamReader's ReadToEnd
-            req.ReadWriteTimeout = readWriteTimeout;
-        }
-
-        if (curCookies != null)
-        {
-            req.CookieContainer = new CookieContainer();
-            req.CookieContainer.PerDomainCapacity = 40; // following will exceed max default 20 cookie per domain
-            req.CookieContainer.Add(curCookies);
-        }
-
-        if ((headerDict != null) && (headerDict.Count > 0))
-        {
-            foreach (string header in headerDict.Keys)
-            {
-                string headerValue = "";
-                if (headerDict.TryGetValue(header, out headerValue))
-                {
-                    string lowecaseHeader = header.ToLower();
-                    // following are allow the caller overwrite the default header setting
-                    if (lowecaseHeader == "referer")
-                    {
-                        req.Referer = headerValue;
-                    }
-                    else if (
-                            (lowecaseHeader == "allow-autoredirect") ||
-                            (lowecaseHeader == "allowautoredirect") ||
-                            (lowecaseHeader == "allow autoredirect")
-                            )
-                    {
-                        bool isAllow = false;
-                        if (bool.TryParse(headerValue, out isAllow))
-                        {
-                            req.AllowAutoRedirect = isAllow;
-                        }
-                    }
-                    else if (lowecaseHeader == "accept")
-                    {
-                        req.Accept = headerValue;
-                    }
-                    else if (
-                            (lowecaseHeader == "keep-alive") ||
-                            (lowecaseHeader == "keepalive") ||
-                            (lowecaseHeader == "keep alive")
-                            )
-                    {
-                        bool isKeepAlive = false;
-                        if (bool.TryParse(headerValue, out isKeepAlive))
-                        {
-                            req.KeepAlive = isKeepAlive;
-                        }
-                    }
-                    else if (
-                            (lowecaseHeader == "accept-language") ||
-                            (lowecaseHeader == "acceptlanguage") ||
-                            (lowecaseHeader == "accept-language")
-                            )
-
-                    {
-                        req.Headers["Accept-Language"] = headerValue;
-                    }
-                    else if (
-                            (lowecaseHeader == "user-agent") ||
-                            (lowecaseHeader == "useragent") ||
-                            (lowecaseHeader == "user agent")
-                            )
-                    {
-                        req.UserAgent = headerValue;
-                    }
-                    else if (
-                            (lowecaseHeader == "content-type") ||
-                            (lowecaseHeader == "contenttype") ||
-                            (lowecaseHeader == "content type")
-                            )
-                    {
-                        req.ContentType = headerValue;
-                    }
-                    else
-                    {
-                        req.Headers[header] = headerValue;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-        }
-
-        if (((postDict != null) && (postDict.Count > 0)) || (!string.IsNullOrEmpty(postDataStr)))
-        {
-            req.Method = "POST";
-            if (req.ContentType == null)
-            {
-                req.ContentType = "application/x-www-form-urlencoded";
-            }
-
-            if ((postDict != null) && (postDict.Count > 0))
-            {
-                postDataStr = quoteParas(postDict);
-            }
-                        
-            //byte[] postBytes = Encoding.GetEncoding("utf-8").GetBytes(postData);
-            byte[] postBytes = Encoding.UTF8.GetBytes(postDataStr);
-            req.ContentLength = postBytes.Length;
-
-            try
-            {
-                Stream postDataStream = req.GetRequestStream();
-                postDataStream.Write(postBytes, 0, postBytes.Length);
-                postDataStream.Close();
-            }
-            catch (WebException webEx)
-            {
-                //for prev has set ReadWriteTimeout
-                //so here also may timeout
-                if (webEx.Status == WebExceptionStatus.Timeout)
-                {
-                    req = null;
-                }
-            }
-        }
-        else
-        {
-            req.Method = "GET";
-        }
-
-        if (req != null)
-        {
-            //may timeout, has fixed in:
-            //http://www.crifan.com/fixed_problem_sometime_httpwebrequest_getresponse_timeout/
-            try
-            {
-                resp = (HttpWebResponse)req.GetResponse();
-                updateLocalCookies(resp.Cookies, ref curCookies);
-            }
-            catch (WebException webEx)
-            {
-                if (webEx.Status == WebExceptionStatus.Timeout)
-                {
-                    resp = null;
-                }
-            }
-        }
-        
-        return resp;
-    }
-
-    /* get url's response
     * */
     public HttpWebResponse getUrlResponse(string url,
                                         Dictionary<string, string> headerDict = defHeaderDict,
@@ -1918,7 +1922,7 @@ public class crifanLib
         return _getUrlResponse(url, headerDict, postDict, timeout, postDataStr);;
 #endif
     }
-        
+
     // valid charset:"GB18030"/"UTF-8", invliad:"UTF8"
     public string getUrlRespHtml(string url,
                                     Dictionary<string, string> headerDict = defHeaderDict,
@@ -2614,7 +2618,6 @@ public class crifanLib
     {
         System.Diagnostics.Process.Start(fullFilename);
     }
-
 
     /*********************************************************************/
     /* Screen */
