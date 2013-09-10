@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v1.5
+ * v1.6
  * 
  * [update]
- * 2013-06-25
+ * 2013-07-04
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,9 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v1.6]
+ * 1. update requestIsValid
+ * 
  * [v1.5]
  * 1. update awsEndpoint
  * 
@@ -662,7 +665,8 @@ public class crifanLibAws
                 }
                 else
                 {
-                    gLogger.Debug(String.Format("Request not valid for {0}, IsValid={1}", respXmlNode.ToString(), strIsValid));
+                    //gLogger.Debug(String.Format("Request not valid for {0}, IsValid={1}", respXmlNode.ToString(), strIsValid));
+                    gLogger.Debug(String.Format("Request IsValid={0} for {1}, ", strIsValid, respXmlNode.InnerXml));
                 }
             }
             else
@@ -1751,6 +1755,23 @@ public class crifanLibAws
             XmlNode asinNode = itemNode.SelectSingleNode("./ASIN");
             offersInfo.Asin = asinNode.InnerText;
 
+            //special: no OfferSummary, no Offers
+            //<Items>
+            //    <Request>
+            //        <IsValid>True</IsValid>
+            //        <ItemLookupRequest>
+            //            <Condition>All</Condition>
+            //            <IdType>ASIN</IdType>
+            //            <ItemId>B004FGMDOQ</ItemId>
+            //            <ResponseGroup>Offers</ResponseGroup>
+            //            <VariationPage>All</VariationPage>
+            //        </ItemLookupRequest>
+            //    </Request>
+            //    <Item>
+            //        <ASIN>B004FGMDOQ</ASIN>
+            //    </Item>
+            //</Items>
+
             XmlNode offerSummaryNode = itemNode.SelectSingleNode("./OfferSummary");
             if (offerSummaryNode != null)
             {
@@ -1776,6 +1797,10 @@ public class crifanLibAws
                     offersInfo.TotalRefurbished = totalRefurbishedNode.InnerText; //"0"
                 }
             }
+            else
+            {
+                gLogger.Debug("No OfferSummary for ItemLookupResponse of ASIN=" + itemAsin);
+            }
 
             XmlNode offersNode = itemNode.SelectSingleNode("./Offers");
             if (offersNode != null)
@@ -1790,7 +1815,7 @@ public class crifanLibAws
             }
             else
             {
- 
+                gLogger.Debug("No Offers for ItemLookupResponse of ASIN=" + itemAsin);
             }
         }
 
