@@ -12,10 +12,10 @@
  * 2.use HtmlAgilityPack
  *  
  * [Version]
- * v2.6
+ * v3.0
  * 
  * [update]
- * 2013-06-17
+ * 2013-09-10
  * 
  * [Author]
  * Crifan Li
@@ -24,6 +24,9 @@
  * http://www.crifan.com/contact_me/
  * 
  * [History]
+ * [v3.0]
+ * 1. update many function to extract infos
+ * 
  * [v2.6]
  * 1. update many functions
  * 
@@ -1043,12 +1046,105 @@ public class crifanLibAmazon
         //                    </div>
         //                </li>
 
+
+        HtmlNodeCollection oldOfferNodeList = null;
+        if (oldOfferNodeList == null)
+        {
+            //http://www.amazon.com/gp/offer-listing/B0005YWH7A/ref=dp_olp_new_mbc?ie=UTF8&condition=new
+            //<div class='a-row a-spacing-medium olpOffer'>
+            //  <div class='a-column a-span2'>
+            //  <span class='a-size-large a-color-price olpOfferPrice a-text-bold'>$40.37</span> 
+            //  <span class='a-color-price'>
+            //    <span class="pricePerUnit">($6.73 / Item)</span>
+            //  </span>
+            //  <p>
+            //    <span class='a-color-secondary'>+ 
+            //    <span class="olpShippingPrice">$0.00</span> 
+            //    <span class="olpShippingPriceText">shipping</span></span>
+            //  </p></div>
+            //  <div class='a-column a-span3'>
+            //    <div class='a-section a-spacing-small'>
+            //      <span class='a-size-medium olpCondition a-text-bold'>New</span>
+            //    </div>
+            //  </div>
+            //  <div class='a-column a-span5 olpSellerColumn'>
+            //    <p class='a-spacing-small olpSellerName'>
+            //      <a href="http://www.amazon.com/shops/A2KFAF0QS92MUL/ref=olp_merch_name_1">
+            //        <img src="http://ecx.images-amazon.com/images/I/11SmRBFO9mL.gif" width="120" alt="Nutricity" title="Nutricity"
+            //        height="30" border="0" />
+            //      </a>
+            //      <br />
+            //    </p>
+            //    <p class='a-spacing-small'>
+            //      <span class="olpSellerRating">
+            //      <img src="http://g-ecx.images-amazon.com/images/G/01/detail/stars-4-5._V192261415_.gif" width="64" alt=""
+            //      class="olpSellerStars" height="12" border="0" /> 
+            //      <a href="/gp/aag/main/ref=olp_merch_rating_1?ie=UTF8&amp;asin=B0005YWH7A&amp;isAmazonFulfilled=0&amp;seller=A2KFAF0QS92MUL">
+
+            //        <b>91% positive</b>
+            //      </a> over the past 12 months. (85,821 total ratings)</span>
+            //    </p>
+            //    <div class="olpAvailability">Usually ships within 4 - 5 business days. Expedited shipping available.
+            //    <br />
+            //    <a href="/gp/aag/details/ref=olp_merch_ship_1?ie=UTF8&amp;asin=B0005YWH7A&amp;seller=A2KFAF0QS92MUL&amp;sshmPath=shipping-rates#aag_shipping">
+            //    International &amp; domestic shipping rates</a> and 
+            //    <a href="/gp/aag/details/ref=olp_merch_return_1?ie=UTF8&amp;asin=B0005YWH7A&amp;seller=A2KFAF0QS92MUL&amp;sshmPath=returns#aag_returns">
+            //    return policy</a>.</div>
+            //    <p class='a-spacing-small'></p>
+            //  </div>
+            //  <div class='a-column a-span2 olpBuyColumn a-span-last'>
+            //    <div class='a-button-stack'>
+            //      <form method='post' action='/gp/item-dispatch/ref=olp_atc_fm_1' class='olpCartForm'>
+            //      <input type="hidden" name="session-id" value="175-2006876-3576307" /> 
+            //      <input type="hidden" name="qid" value="" /> 
+            //      <input type="hidden" name="sr" value="" /> 
+            //      <input type="hidden" name="signInToHUC" value="0" id="signInToHUC" /> 
+            //      <input type="hidden" name="metric-asin.B0005YWH7A" value="1" /> 
+            //      <input type="hidden" name="registryItemID.1" value="" /> 
+            //      <input type="hidden" name="registryID.1" value="" /> 
+            //      <input type="hidden" name="itemCount" value="1" /> 
+            //      <input type="hidden" name="offeringID.1"
+            //      value="BOUi4w9LxovFkpVlVIG66MCDi2r7fL3YHUylSFaasglaVBwmi3KH9rTEMFHjKLxKRY1FSrrKNeQzp6n734Of1uM7EGPueHxh9JGpIanOKbgz6qg%2F2BqfiVka07bIepRxagzydeUwLa8HMSP%2FmUlHuQ%3D%3D" />
+
+            //      <input type="hidden" name="isAddon" value="0" /> 
+            //      <span class='a-button a-button-primary a-button-icon'>
+            //        <span class='a-button-inner'>
+            //        <input name='submit.addToCart' class='a-button-input' type='submit' value='Add to cart' /> 
+            //        <span class='a-button-text'>Add to cart</span></span>
+            //      </span></form>
+            //      <p class='a-spacing-micro a-text-center'>or</p>
+            //      <p class='a-spacing-none a-text-center olpSignIn'>
+            //      <a href="https://www.amazon.com/gp/product/utility/edit-one-click-pref.html/ref=olp_offerlisting_1?ie=UTF8&amp;returnPath=%2Fgp%2Foffer-listing%2FB0005YWH7A">
+            //      Sign in</a> to turn on 1-Click ordering.</p>
+            //    </div>
+            //  </div>
+            //</div>
+
+            oldOfferNodeList = rootNode.SelectNodes("//div[@class='a-row a-spacing-medium olpOffer']");
+        }
+
+        if (oldOfferNodeList == null)
+        {
+            //http://www.amazon.com/gp/offer-listing/B0009P5YXO/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr=
+            //<div class='a-row a-spacing-mini olpOffer'>
+            //    <div class='a-column a-span2'>
+            //        <span class='a-size-large a-color-price olpOfferPrice a-text-bold'>        $24.98    </span>
+            //        ......
+            //        <p class='a-spacing-small olpSellerName'>
+            //            <a href="http://www.amazon.com/shops/AVX4MBCC3Z0US/ref=olp_merch_name_2"><img src="http://ecx.images-amazon.com/images/I/11IOQefmgaL.gif" width="120" alt="Comics-N-Stuff" title="Comics-N-Stuff" height="30" border="0"></a><br>
+            //        </p>
+
+            oldOfferNodeList = rootNode.SelectNodes("//div[@class='a-row a-spacing-mini olpOffer']");
+        }
+
+
         HtmlNodeCollection resultBodyNodeList = rootNode.SelectNodes("//tbody[@class='result']");
         if ((resultBodyNodeList != null) && (resultBodyNodeList.Count > 0))
         {
             foreach (HtmlNode eachSellerNode in resultBodyNodeList)
             {
                 productSellerInfo sellerInfo = new productSellerInfo();
+                bool getCurSellerInfoOk = true;
 
                 //1. seller name
                 //type1: image, contain title(name), also contain link
@@ -1071,9 +1167,10 @@ public class crifanLibAmazon
                     {
                         //something wrong ?
                         gLogger.Warn("not find sellerBNode for " + curPageSellerUrl);
+                        
+                        getCurSellerInfoOk = false;
                     }
                 }
-
 
                 //2. seller price
                 //<span class="price">$167.99</span>
@@ -1100,9 +1197,124 @@ public class crifanLibAmazon
                     //    </td>
                     //    <td>
                     gLogger.Debug("not find priceNode for " + curPageSellerUrl);
+
+                    getCurSellerInfoOk = false;
                 }
 
-                curPageSellerInfoList.Add(sellerInfo);
+                if (getCurSellerInfoOk)
+                {
+                    curPageSellerInfoList.Add(sellerInfo);
+                }
+            }
+        }
+        else if ((oldOfferNodeList != null) && (oldOfferNodeList.Count > 0))
+        {
+            foreach (HtmlNode oldOfferNode in oldOfferNodeList)
+            {
+                productSellerInfo sellerInfo = new productSellerInfo();
+                bool getCurSellerInfoOk = true;
+
+                //1. seller name
+                //<div class='a-column a-span5 olpSellerColumn'>
+                //  <p class='a-spacing-small olpSellerName'>
+                //    <a href="http://www.amazon.com/shops/A2KFAF0QS92MUL/ref=olp_merch_name_1">
+                //      <img src="http://ecx.images-amazon.com/images/I/11SmRBFO9mL.gif" width="120" alt="Nutricity" title="Nutricity"
+                //      height="30" border="0" />
+                //    </a>
+
+                //<div class='a-column a-span5 olpSellerColumn'>
+                //  <p class='a-spacing-small olpSellerName'>
+                //    <img src="http://ecx.images-amazon.com/images/I/01dXM-J1oeL.gif" width="90" alt="Amazon.com" title="Amazon.com" height="17"
+                //    border="0" />
+                //    <br />
+                //  </p>
+
+                //HtmlNode imgNode = oldOfferNode.SelectSingleNode(".//div[contains(@class,'olpSellerColumn')]/p[contains(@class, 'olpSellerName')]/a/img[@src and @title]");
+                //HtmlNode sellerANode = oldOfferNode.SelectSingleNode(".//div[contains(@class,'olpSellerColumn')]/p[contains(@class, 'olpSellerName')]/a");
+                //HtmlNode sellerANode = oldOfferNode.SelectSingleNode(".//div[contains(@class,'olpSellerColumn')]/p[contains(@class, 'olpSellerName')]//a");
+                HtmlNode olpSellerNameNode = oldOfferNode.SelectSingleNode(".//div[contains(@class,'olpSellerColumn')]/p[contains(@class, 'olpSellerName')]");
+
+                if (olpSellerNameNode != null)
+                {
+                    HtmlNode imgNode = olpSellerNameNode.SelectSingleNode(".//img[@src and @title]");
+                    if (imgNode != null)
+                    {
+                        //type1: image, contain title(name), also contain link
+                        string imgTitle = imgNode.Attributes["title"].Value;//Nutricity
+                        sellerInfo.name = imgTitle;
+                    }
+                    else
+                    {
+                        //<div class='a-column a-span5 olpSellerColumn'>
+                        //<p class='a-spacing-small olpSellerName'>
+                        //    <span class='a-size-medium'>
+                        //    <a href="/gp/aag/main/ref=olp_merch_name_4?ie=UTF8&amp;asin=B0005YWH7A&amp;isAmazonFulfilled=0&amp;seller=A2YPCK6GWDEH36">
+                        //        <b>Jupiter&#39;s</b>
+                        //    </a>
+                        //    </span>
+                        //</p>
+
+                        HtmlNode aSizeMediumTitleNode = null;
+                        if (aSizeMediumTitleNode == null)
+                        {
+                            //<span class='a-size-medium'>
+                            //    <a href="/gp/aag/main/ref=olp_merch_name_2?ie=UTF8&amp;asin=B001FA1L9I&amp;isAmazonFulfilled=0&amp;seller=A2RT9A30B947NZ"><b>Premier Life</b></a>
+                            //</span>
+                            aSizeMediumTitleNode = olpSellerNameNode.SelectSingleNode("./span[@class='a-size-medium']/a/b");
+                        }
+
+                        if (aSizeMediumTitleNode == null)
+                        {
+                            //<span class='a-size-medium a-text-bold'>
+                            //    <a href="/gp/aag/main/ref=olp_merch_name_11?ie=UTF8&amp;asin=B0009P5YXO&amp;isAmazonFulfilled=0&amp;seller=A1TSQ9D0EY9488">kumrai</a>
+                            //</span>
+                            aSizeMediumTitleNode = olpSellerNameNode.SelectSingleNode("./span[@class='a-size-medium a-text-bold']/a");
+                        }
+                        if (aSizeMediumTitleNode != null)
+                        {
+                            string sellerName = aSizeMediumTitleNode.InnerText;//"Jupiter's"
+                            sellerInfo.name = sellerName;
+                        }
+                        else
+                        {
+                            //something wrong ?
+                            gLogger.Warn("not find oldOfferNode's aSizeMediumTitleNode for " + curPageSellerUrl);
+
+                            getCurSellerInfoOk = false;
+                        }
+                    }
+                }
+                else
+                {
+                    //something wrong ?
+                    gLogger.Warn("not find oldOfferNode's olpSellerNameNode for " + curPageSellerUrl);
+                }
+
+                //2. seller price
+                //<span class='a-size-large a-color-price olpOfferPrice a-text-bold'>$40.37</span> 
+                HtmlNode priceNode = oldOfferNode.SelectSingleNode(".//span[contains(@class, 'olpOfferPrice')]");
+                if (priceNode != null)
+                {
+                    string priceDollarStr = priceNode.InnerText; //"\n        $40.37\n    "
+                    string priceStr = priceDollarStr.Replace("$", "").Trim(); //"40.37"
+                    sellerInfo.price = float.Parse(priceStr);
+                }
+                else
+                {
+                    //something wrong ?
+                    //or some special:
+                    //http://www.amazon.com/gp/offer-listing/B003H7B78M/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr=
+                    //Tucker's Toy Shop
+                    //no price, only:  Add to cart to see product details. 
+                    gLogger.Debug("not find oldOfferNode's priceNode for " + curPageSellerUrl);
+
+                    getCurSellerInfoOk = false;
+                }
+
+                if (getCurSellerInfoOk)
+                {
+                    curPageSellerInfoList.Add(sellerInfo);
+                }
             }
         }
         else
@@ -1181,6 +1393,29 @@ public class crifanLibAmazon
             HtmlAgilityPack.HtmlDocument curPageHtmlDoc = crl.htmlToHtmlDoc(curPageSellerHtml);
             HtmlNode curPageRootNode = curPageHtmlDoc.DocumentNode;
             HtmlNode pageNextNode = curPageRootNode.SelectSingleNode("//a[@id='olp_page_next' and @class='nextoff']");
+
+            if (pageNextNode == null)
+            {
+                //http://www.amazon.com/gp/offer-listing/B001FA1L9I/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr=
+                //<div class="a-pagination a-text-center a-spacing-large">
+                //  <ul class="a-pagination">
+                //    <li class="a-disabled">←Previous</li>
+                //    <li class="a-selected">
+                //      <a href="">1</a>
+                //    </li>
+                //    <li>
+                //      <a href="/gp/offer-listing/B001FA1L9I/sr=/qid=/ref=olp_page_2?ie=UTF8&amp;colid=&amp;coliid=&amp;condition=new&amp;me=&amp;qid=&amp;shipPromoFilter=0&amp;sort=sip&amp;sr=&amp;startIndex=10">
+                //      2</a>
+                //    </li>
+                //    <li class="a-last">
+                //      <a href="/gp/offer-listing/B001FA1L9I/sr=/qid=/ref=olp_page_next?ie=UTF8&amp;colid=&amp;coliid=&amp;condition=new&amp;me=&amp;qid=&amp;shipPromoFilter=0&amp;sort=sip&amp;sr=&amp;startIndex=10">
+                //      Next→</a>
+                //    </li>
+                //  </ul>
+                //</div>
+                pageNextNode = curPageRootNode.SelectSingleNode("//ul[@class='a-pagination']//li[@class='a-last']/a");
+            }
+
             if (pageNextNode != null)
             {
                 string pageNextHref = pageNextNode.Attributes["href"].Value;
@@ -1257,6 +1492,25 @@ public class crifanLibAmazon
 
         //HtmlNode newANode = rootNode.SelectSingleNode("//td[@id='new' and @class='olpmiddleoffonleft']/a[@href]");
         HtmlNode newANode = rootNode.SelectSingleNode("//td[@id='new' and contains(@class, 'olpmiddle')]/a[@href]"); //olpmiddleoffonleft or olpmiddleon inactive
+
+        if (newANode == null)
+        {
+            //http://www.amazon.com/gp/offer-listing/B0005YWH7A/ref=dp_olp_new_mbc?ie=UTF8&condition=new
+            //<ul id='olpTabs' class='a-tabs'>
+            //    <li id='olpTabAll'><a href='/gp/offer-listing/B0005YWH7A/sr=/qid=/ref=olp_tab_all?ie=UTF8&colid=&coliid=&me=&qid=&seller=&sr='>All</a></li>
+            //    <li id='olpTabNew' class='a-active'><a href='/gp/offer-listing/B0005YWH7A/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr='>&nbsp;New&nbsp;<span class="numberreturned">from $32.99</span>&nbsp;<span class="olpPercentOff">(Save  <b>18</b>%)</span></a></li>
+            //</ul>
+
+            //http://www.amazon.com/gp/offer-listing/B00A8UT558
+            //<ul id='olpTabs' class='a-tabs'>
+            //    <li id='olpTabAll' class='a-active'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_all?ie=UTF8&colid=&coliid=&me=&qid=&seller=&sr='>All</a></li>
+            //    <li id='olpTabNew'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr='>New from $13.99 (Save  <b>6</b>%)</a></li>
+            //    <li id='olpTabUsed'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_used?ie=UTF8&colid=&coliid=&condition=used&me=&qid=&seller=&sr='>Used  </a></li>
+            //</ul>
+            
+            newANode = rootNode.SelectSingleNode("//li[@id='olpTabNew']/a[@href]"); //olpmiddleoffonleft or olpmiddleon inactive
+        }
+
         if (newANode != null)
         {
             string newAHref = newANode.Attributes["href"].Value; // "/gp/offer-listing/B007OZNZG0/sr=/qid=/ref=olp_tab_new?ie=UTF8&amp;colid=&amp;coliid=&amp;condition=new&amp;me=&amp;qid=&amp;seller=&amp;sr="
@@ -1276,7 +1530,23 @@ public class crifanLibAmazon
         }
 
         //HtmlNode usedANode = rootNode.SelectSingleNode("//td[@id='used' and @class='olpmiddleoff']/a[@href]");
-        HtmlNode usedANode = rootNode.SelectSingleNode("//td[@id='used' and contains(@class, 'olpmiddleoff')]/a[@href]");//olpmiddleoff or olpmiddleoffonleft
+        HtmlNode usedANode = null;
+        if (usedANode == null)
+        {
+            usedANode = rootNode.SelectSingleNode("//td[@id='used' and contains(@class, 'olpmiddleoff')]/a[@href]");//olpmiddleoff or olpmiddleoffonleft
+        }
+
+        if (usedANode == null)
+        {            
+            //http://www.amazon.com/gp/offer-listing/B00A8UT558
+            //<ul id='olpTabs' class='a-tabs'>
+            //    <li id='olpTabAll' class='a-active'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_all?ie=UTF8&colid=&coliid=&me=&qid=&seller=&sr='>All</a></li>
+            //    <li id='olpTabNew'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_new?ie=UTF8&colid=&coliid=&condition=new&me=&qid=&seller=&sr='>New from $13.99 (Save  <b>6</b>%)</a></li>
+            //    <li id='olpTabUsed'><a href='/gp/offer-listing/B00A8UT558/sr=/qid=/ref=olp_tab_used?ie=UTF8&colid=&coliid=&condition=used&me=&qid=&seller=&sr='>Used  </a></li>
+            //</ul>
+            usedANode = rootNode.SelectSingleNode("//li[@id='olpTabUsed']/a[@href]");
+        }
+
         if (usedANode != null)
         {
             string usedAHref = usedANode.Attributes["href"].Value;
@@ -1308,7 +1578,20 @@ public class crifanLibAmazon
             //    </tr>
             //</table>
 
-            extractSellerInfoOk = false;
+
+            //special:
+            //http://www.amazon.com/gp/offer-listing/B001FA1L9I/sr=/qid=/ref=olp_tab_all?ie=UTF8&colid=&coliid=&me=&qid=&seller=&sr=
+            // no used
+
+            if (extractSellerInfoOk)
+            {
+                //not overwrite previous, has got newANode
+            }
+            else
+            {
+                extractSellerInfoOk = false;
+            }
+            
             gLogger.Debug("not found usedANode for " + usedAndNewUrl);
         }
 
