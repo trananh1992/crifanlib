@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v8.0
+ * v8.3
  * 
  * [update]
- * 2013-08-21
+ * 2013-09-11
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,11 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v8.3]
+ * 1. change update cookie from use dotnet self parsed resp.Cookies, to self parsed cookies
+ * 2. for parse cookie, support: when no expires or expires parse fail, use max datetime, let it not expired
+ * 3. support year is dd for parseSetCookie
+ * 
  * [v8.0]
  * 1. fix typo "accept-language" to "accept language"
  * 2. move some code location
@@ -178,9 +183,10 @@ public class crifanLib
 
     private Dictionary<string, DateTime> calcTimeList;
 
-    const char replacedChar = '_';
+    const char constReplacedChar = '_';
 
-    string[] cookieFieldArr = { "expires", "domain", "secure", "path", "httponly", "version" };
+    const string constStrExpires = "expires";
+    string[] cookieFieldArr = { constStrExpires, "domain", "secure", "path", "httponly", "version" };
 
     //IE7
     const string constUserAgent_IE7_x64 = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)";
@@ -210,9 +216,9 @@ public class crifanLib
     private const int defMaxTryNum = 5;
     private const int defRetryFailSleepTime = 100; //sleep time in ms when retry fail for getUrlRespHtml
 
-    List<string> cookieFieldList = new List<string>();
+    List<string> gCookieFieldList = new List<string>();
 
-    CookieCollection curCookies = null;
+    CookieCollection gCurCookies = null;
 
     //private long totalLength = 0;
     //private long currentLength = 0;
@@ -240,11 +246,11 @@ public class crifanLib
         //set max enough to avoid http request is used out -> avoid dead while get response 
         System.Net.ServicePointManager.DefaultConnectionLimit = 200;
 
-        curCookies = new CookieCollection();
+        gCurCookies = new CookieCollection();
         // init const cookie keys
         foreach (string key in cookieFieldArr)
         {
-            cookieFieldList.Add(key);
+            gCookieFieldList.Add(key);
         }
 
         //init for calc time
@@ -275,19 +281,19 @@ public class crifanLib
         return System.Reflection.Assembly.Load(bytes);
     }
 
-    // replace the replacedChar back to original ','
+    // replace the constReplacedChar back to original ','
     private string _recoverExpireField(Match foundPprocessedExpire)
     {
         string recovedStr = "";
-        recovedStr = foundPprocessedExpire.Value.Replace(replacedChar, ',');
+        recovedStr = foundPprocessedExpire.Value.Replace(constReplacedChar, ',');
         return recovedStr;
     }
 
-    //replace ',' with replacedChar
+    //replace ',' with constReplacedChar
     private string _processExpireField(Match foundExpire)
     {
         string replacedComma = "";
-        replacedComma = foundExpire.Value.ToString().Replace(',', replacedChar);
+        replacedComma = foundExpire.Value.ToString().Replace(',', constReplacedChar);
         return replacedComma;
     }
 
@@ -433,11 +439,11 @@ public class crifanLib
             req.ReadWriteTimeout = readWriteTimeout;
         }
 
-        if (curCookies != null)
+        if (gCurCookies != null)
         {
             req.CookieContainer = new CookieContainer();
             req.CookieContainer.PerDomainCapacity = 40; // following will exceed max default 20 cookie per domain
-            req.CookieContainer.Add(curCookies);
+            req.CookieContainer.Add(gCurCookies);
         }
 
         if ((headerDict != null) && (headerDict.Count > 0))
@@ -563,7 +569,15 @@ public class crifanLib
             try
             {
                 resp = (HttpWebResponse)req.GetResponse();
-                updateLocalCookies(resp.Cookies, ref curCookies);
+                    
+                    //type1: use dotnet parse cookies
+                    //updateLocalCookies(resp.Cookies, ref gCurCookies);
+
+                    //type2: use crifanLib.cs functions to parse cookie
+                    //update latest cookies
+                    string curDomain = extractDomain(url);
+                    CookieCollection parsedCookies = parseSetCookie(resp.Headers["Set-Cookie"], curDomain);
+                    updateLocalCookies(parsedCookies, ref gCurCookies);
             }
             catch (WebException webEx)
             {
@@ -1238,7 +1252,9 @@ public class crifanLib
             {
                 case "expires":
                     DateTime expireDatetime;
-                    if (DateTime.TryParse(pairInfo.value, out expireDatetime))
+                        bool parseDatetimeOk = false;
+                        parseDatetimeOk = DateTime.TryParse(pairInfo.value, out expireDatetime);
+                        if (parseDatetimeOk)
                     {
                         // note: here coverted to local time: GMT +8
                         ck.Expires = expireDatetime;
@@ -1286,7 +1302,7 @@ public class crifanLib
 
     public bool isValidCookieField(string cookieKey)
     {
-        return cookieFieldList.Contains(cookieKey.ToLower());
+        return gCookieFieldList.Contains(cookieKey.ToLower());
     }
 
     //cookie field example:
@@ -1444,20 +1460,30 @@ public class crifanLib
             ck.Value = pair.value;
 
             string[] fieldExpressions = getSubStrArr(expressions, 1, expressions.Length - 1);
+                bool noDeisignateExpires = true;
             foreach (string eachExpression in fieldExpressions)
             {
                 //parse key and value
                 if (parseCookieField(eachExpression, out pair))
                 {
                     // add to cookie field if possible
-                    addFieldToCookie(ref ck, pair);
+                        bool addedOk = false;
+                        addedOk = addFieldToCookie(ref ck, pair);
+                        if (addedOk && string.Equals(pair.key, constStrExpires))
+                        {
+                            noDeisignateExpires = false;
                 }
+                    }
                 else
                 {
                     // if any field fail, consider it is a abnormal cookie string, so quit with false
                     parsedOk = false;
                     break;
+                    }
                 }
+                if (noDeisignateExpires)
+                {
+                    ck.Expires = DateTime.MaxValue;
             }
         }
         else
@@ -1482,13 +1508,13 @@ public class crifanLib
         // process for expires and Expires field, for it contains ','
         //refer: http://www.yaosansi.com/post/682.html
         // may contains expires or Expires, so following use xpires
-        string commaReplaced = Regex.Replace(setCookieStr, @"xpires=\w{3},\s\d{2}-\w{3}-\d{4}", new MatchEvaluator(_processExpireField));
+            string commaReplaced = Regex.Replace(setCookieStr, @"xpires=\w{3},\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_processExpireField));
         string[] cookieStrArr = commaReplaced.Split(',');
         foreach (string cookieStr in cookieStrArr)
         {
             Cookie ck = new Cookie();
             // recover it back
-            string recoveredCookieStr = Regex.Replace(cookieStr, @"xpires=\w{3}" + replacedChar + @"\s\d{2}-\w{3}-\d{4}", new MatchEvaluator(_recoverExpireField));
+                string recoveredCookieStr = Regex.Replace(cookieStr, @"xpires=\w{3}" + constReplacedChar + @"\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_recoverExpireField));
             if (parseSingleCookie(recoveredCookieStr, ref ck))
             {
                 if (needAddThisCookie(ck, curDomain))
@@ -1875,23 +1901,23 @@ public class crifanLib
      */
     public void clearCurCookies()
     {
-        if (curCookies != null)
+        if (gCurCookies != null)
         {
-            curCookies = null;
-            curCookies = new CookieCollection();
+            gCurCookies = null;
+            gCurCookies = new CookieCollection();
         }
     }
 
     /* get current cookies */
     public CookieCollection getCurCookies()
     {
-        return curCookies;
+        return gCurCookies;
     }
 
     /* set current cookies */
     public void setCurCookies(CookieCollection cookies)
     {
-        curCookies = cookies;
+        gCurCookies = cookies;
     }
 
     /* get url's response
