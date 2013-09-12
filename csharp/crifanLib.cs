@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v8.3
+ * v8.4
  * 
  * [update]
- * 2013-09-11
+ * 2013-09-12
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,9 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v8.4]
+ * 1. fix extractDomain for input fiverr.com, extracted should not .com, should fivver.com
+ * 
  * [v8.3]
  * 1. change update cookie from use dotnet self parsed resp.Cookies, to self parsed cookies
  * 2. for parse cookie, support: when no expires or expires parse fail, use max datetime, let it not expired
@@ -136,8 +139,8 @@
 #define USE_GETURLRESPONSE_BW //for getUrlResponse use backgroundworker version
 //#define USE_HTML_PARSER_SGML //need SgmlReaderDll.dll
 //#define USE_HTML_PARSER_HTMLAGILITYPACK //need HtmlAgilityPack.dll
-//#define USE_DATAGRIDVIEW
-//#define USE_JSON
+//#define USE_DATAGRIDVIEW //need add References: Microsoft.Office.Interop.Excel
+//#define USE_JSON //need .NET 3.5+ and add References: (System.Web and) System.Web.Extensions
 
 
 using System;
@@ -156,6 +159,7 @@ using System.ComponentModel;
 using System.Globalization;
 
 #if USE_JSON
+//!!! need add References: (System.Web and) System.Web.Extensions
 using System.Web.Script.Serialization; // json lib, need: .NET 3.5+
 #endif
 
@@ -1212,7 +1216,15 @@ public class crifanLib
         host = extractHost(url);
         if (host.Contains("."))
         {
-            domain = host.Substring(host.IndexOf('.'));
+            if (Regex.IsMatch(host, @"\w\.\w"))
+            {
+                //like: "fiverr.com"
+                domain = host;
+            }
+            else
+            {
+                domain = host.Substring(host.IndexOf('.'));
+            }
         }
         return domain;
     }
