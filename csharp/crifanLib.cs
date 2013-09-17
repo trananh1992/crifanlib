@@ -9,10 +9,10 @@
  * 1.copy out embed dll into exe related code into your project for use
  * 
  * [Version]
- * v8.4
+ * v8.5
  * 
  * [update]
- * 2013-09-12
+ * 2013-09-17
  * 
  * [Author]
  * Crifan Li
@@ -23,6 +23,8 @@
  * http://www.crifan.com/crifan_csharp_lib_crifanlib_cs/
  * 
  * [History]
+ * [v8.5]
+ * 1. check input setCookieStr for 
  * [v8.4]
  * 1. fix extractDomain for input fiverr.com, extracted should not .com, should fivver.com
  * 
@@ -1517,21 +1519,24 @@ public class crifanLib
     {
         CookieCollection parsedCookies = new CookieCollection();
 
-        // process for expires and Expires field, for it contains ','
-        //refer: http://www.yaosansi.com/post/682.html
-        // may contains expires or Expires, so following use xpires
-            string commaReplaced = Regex.Replace(setCookieStr, @"xpires=\w{3},\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_processExpireField));
-        string[] cookieStrArr = commaReplaced.Split(',');
-        foreach (string cookieStr in cookieStrArr)
+        if (!string.IsNullOrEmpty(setCookieStr))
         {
-            Cookie ck = new Cookie();
-            // recover it back
-                string recoveredCookieStr = Regex.Replace(cookieStr, @"xpires=\w{3}" + constReplacedChar + @"\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_recoverExpireField));
-            if (parseSingleCookie(recoveredCookieStr, ref ck))
+            // process for expires and Expires field, for it contains ','
+            //refer: http://www.yaosansi.com/post/682.html
+            // may contains expires or Expires, so following use xpires
+            string commaReplaced = Regex.Replace(setCookieStr, @"xpires=\w{3},\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_processExpireField));
+            string[] cookieStrArr = commaReplaced.Split(',');
+            foreach (string cookieStr in cookieStrArr)
             {
-                if (needAddThisCookie(ck, curDomain))
+                Cookie ck = new Cookie();
+                // recover it back
+                string recoveredCookieStr = Regex.Replace(cookieStr, @"xpires=\w{3}" + constReplacedChar + @"\s\d{2}-\w{3}-\d{2,4}", new MatchEvaluator(_recoverExpireField));
+                if (parseSingleCookie(recoveredCookieStr, ref ck))
                 {
-                    parsedCookies.Add(ck);
+                    if (needAddThisCookie(ck, curDomain))
+                    {
+                        parsedCookies.Add(ck);
+                    }
                 }
             }
         }
