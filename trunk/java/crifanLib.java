@@ -4,10 +4,13 @@
  * 
  * [Function]
  * 1. implement crifan's common functions
- * 
+ * https://code.google.com/p/crifanlib/source/browse/trunk/java/crifanLib.java
+ *  
  * [Version]
- * v1.4
- * 2013-07-17
+ * v2.0
+ * 
+ * [Contact]
+ * http://www.crifan.com/about/me/
  * 
  * [Note]
  * 1. need add apache http lib:
@@ -15,7 +18,11 @@
  * http://www.crifan.com/java_eclipse_the_import_org_apache_cannot_be_resolved/
  * 
  * [History]
- * [v1.4]
+ * [v2.0, 2013-09-17]
+ * 1. update getUrlResponse and getUrlRespHtml
+ * 2. add getCurCookieList, getCurCookieStore, setCurCookieStore, setCurCookieList
+ *  
+ * [v1.4,  2013-07-17]
  * 1. add calcTimeStart, calcTimeEnd
  * 2. add dateToString, outputStringToFile
  * 
@@ -26,26 +33,30 @@
 //package crifan.com;
 
 import java.io.File;
-import java.io.FileNotFoundException;
+//import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.CookieManager;
-import java.net.CookiePolicy;
-import java.net.HttpCookie;
+//import java.net.CookieManager;
+//import java.net.CookiePolicy;
+//import java.net.HttpCookie;
 import java.text.SimpleDateFormat;
+//import java.util.Calendar;
 import java.util.Date;
+//import java.util.GregorianCalendar;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
+//import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpResponse;
 import org.apache.http.HttpStatus;
+
 import org.apache.http.NameValuePair;
+
 import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.CookieStore;
 //import org.apache.http.client.HttpClient;
@@ -53,34 +64,61 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.cookie.Cookie;
-import org.apache.http.impl.client.BasicCookieStore;
-import org.apache.http.impl.client.DefaultHttpClient;
-//import org.apache.http.impl.cookie.BasicClientCookie;
-import org.apache.http.params.HttpParams;
-
-import org.apache.http.protocol.BasicHttpContext;
-import org.apache.http.protocol.HttpContext;
 import org.apache.http.client.params.ClientPNames;
 import org.apache.http.client.protocol.ClientContext;
 
+import org.apache.http.cookie.Cookie;
+
+import org.apache.http.impl.client.BasicCookieStore;
+import org.apache.http.impl.client.DefaultHttpClient;
+//import org.apache.http.impl.cookie.BasicClientCookie;
+
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.CoreConnectionPNames;
+//import org.apache.http.params.HttpConnectionParams;
+//import org.apache.http.params.HttpProtocolParams;
+//import org.apache.http.params.HttpParams;
+//import org.apache.http.params.DefaultedHttpParams;
+import org.apache.http.params.CoreProtocolPNames;
+
+import org.apache.http.protocol.BasicHttpContext;
+import org.apache.http.protocol.HttpContext;
+
+
 import org.apache.http.util.EntityUtils;
 
-//import crifan.com.downloadsongtastemusic.R;
 
+//for android:
+//import crifan.com.downloadsongtastemusic.R;
 //import android.os.Environment;
 //import android.widget.EditText;
 //import android.app.Activity;
 
 public class crifanLib {
-	private CookieStore localCookies = null;
+	private CookieStore gCurCookieStore = null;
 	//private HashMap<Object, Object> calcTimeKeyDict;
 	private HashMap<String, Long> calcTimeKeyDict;
 	//private Map<String, Long> calcTimeKeyDict;
+
+    //IE7
+	private static final String constUserAgent_IE7_x64 = "Mozilla/4.0 (compatible; MSIE 7.0; Windows NT 6.1; WOW64; Trident/5.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E)";
+    //IE8
+	private static final String constUserAgent_IE8_x64 = "Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 6.1; WOW64; Trident/4.0; SLCC2; .NET CLR 2.0.50727; .NET CLR 3.5.30729; .NET CLR 3.0.30729; Media Center PC 6.0; InfoPath.3; .NET4.0C; .NET4.0E";
+    //IE9
+	private static final String constUserAgent_IE9_x64 = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0)"; // x64
+	private static final String constUserAgent_IE9_x86 = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; Trident/5.0)"; // x86
+    //Chrome
+	private static final String constUserAgent_Chrome = "Mozilla/5.0 (Windows; U; Windows NT 6.1; en-US) AppleWebKit/533.4 (KHTML, like Gecko) Chrome/5.0.375.99 Safari/533.4";
+    //Mozilla Firefox
+	private static final String constUserAgent_Firefox = "Mozilla/5.0 (Windows; U; Windows NT 6.1; rv:1.9.2.6) Gecko/20100625 Firefox/3.6.6";
+	
+	private static String gUserAgent = "";
+	
 	
 	public crifanLib()
 	{
-		localCookies = new BasicCookieStore();
+		gUserAgent = constUserAgent_IE8_x64;
+		gCurCookieStore = new BasicCookieStore();
 		
 		calcTimeKeyDict = new HashMap<String, Long>();
 	}
@@ -137,20 +175,92 @@ public class crifanLib {
         
         return ouputOk;
 	}
+		
+	public void dbgPrintCookies(List<Cookie> cookieList, String url)
+	{
+		if((null != url) && (!url.isEmpty()))
+		{
+			System.out.println("Cookies for " + url);
+		}
+		
+		for(Cookie ck : cookieList)
+		{
+			System.out.println(ck);
+		}
+	}
 	
-    /** Get response from url, headerDict, postDict */
-    public HttpResponse getUrlResponse(String url,
-    							HttpParams headerParams,
-								List<NameValuePair> postDict)
+	public void dbgPrintCookies(CookieStore cookieStore)
+	{
+		dbgPrintCookies(cookieStore, null);
+	}
+	
+	public void dbgPrintCookies(CookieStore cookieStore, String url)
+	{
+		List<Cookie> cookieList = cookieStore.getCookies();
+		dbgPrintCookies(cookieList, url);
+	}
+	
+	public void dbgPrintCookies(List<Cookie> cookieList)
+	{
+		dbgPrintCookies(cookieList, null);
+	}
+	
+	public CookieStore getCurCookieStore()
+	{
+		return gCurCookieStore;
+	}
+
+	public List<Cookie> getCurCookieList()
+	{
+		if(null != gCurCookieStore)
+		{
+			return gCurCookieStore.getCookies();
+		}
+		else
+		{
+			return null;
+		}
+	}
+
+	public void setCurCookieStore(CookieStore newCookieStore)
+	{
+		gCurCookieStore = newCookieStore;
+	}
+
+	public void setCurCookieList(List<Cookie> newCookieList)
+	{
+		gCurCookieStore.clear();
+		for(Cookie eachNewCk : newCookieList)
+		{
+			gCurCookieStore.addCookie(eachNewCk);
+		}
+	}
+	
+	
+    /** Get response from url  */
+    public HttpResponse getUrlResponse(
+    		String url,
+    		List<NameValuePair> headerDict,
+    		List<NameValuePair> postDict,
+    		int timeout
+    		)
     {
     	// init
     	HttpResponse response = null;
     	HttpUriRequest request = null;
     	DefaultHttpClient httpClient = new DefaultHttpClient();
     	
-    	//default enable auto redirect
-    	headerParams.setBooleanParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
-
+    	//HttpParams headerParams = new HttpParams();
+    	//HttpParams headerParams = new DefaultedHttpParams(headerParams, headerParams);
+    	//HttpParams headerParams = new BasicHttpParams();
+    	BasicHttpParams headerParams = new BasicHttpParams();
+    	//HttpConnectionParams.
+		//default enable auto redirect
+    	headerParams.setParameter(CoreProtocolPNames.USER_AGENT, gUserAgent);
+    	headerParams.setParameter(ClientPNames.HANDLE_REDIRECTS, Boolean.TRUE);
+    	
+    	headerParams.setParameter(CoreConnectionPNames.SO_KEEPALIVE, Boolean.TRUE);
+    	
     	if(postDict != null)
     	{
     		HttpPost postReq = new HttpPost(url);
@@ -160,7 +270,7 @@ public class crifanLib {
     			postReq.setEntity(postBodyEnt);
     		}
     		catch(Exception e){
-    			
+    			e.printStackTrace();
     		}
 
     		request = postReq;
@@ -174,23 +284,31 @@ public class crifanLib {
 
     	if(headerParams != null)
     	{
+    		//HttpProtocolParams.setUserAgent(headerParams, gUserAgent);
+    		//headerParams.setHeader(HttpMethodParams.USER_AGENT, gUserAgent);
     		request.setParams(headerParams);
     	}
+    	
+    	//request.setHeader("User-Agent", gUserAgent);
+    	
 
 		try{			
 			HttpContext localContext = new BasicHttpContext();
-			localContext.setAttribute(ClientContext.COOKIE_STORE, localCookies);
+			localContext.setAttribute(ClientContext.COOKIE_STORE, gCurCookieStore);
 			response = httpClient.execute(request, localContext);
-			List<Cookie> respCookieList = localCookies.getCookies();
-			System.out.println("Cookies for " + url);
-			for(Cookie ck : respCookieList)
-			{
-				System.out.println(ck);
-			}
 			
-        } catch (ClientProtocolException cpe) {
+			//response HeaderGroup value:
+			//[Via: 1.1 SC-SZ-06, Connection: Keep-Alive, Proxy-Connection: Keep-Alive, Content-Length: 11006, Expires: Tue, 17 Sep 2013 01:43:44 GMT, Date: Tue, 17 Sep 2013 01:43:44 GMT, Content-Type: text/html;charset=utf-8, Server: BWS/1.0, Cache-Control: private, BDPAGETYPE: 1, BDUSERID: 0, BDQID: 0xaaa869770d8d5dcd, Set-Cookie: BDSVRTM=2; path=/, Set-Cookie: H_PS_PSSID=3361_2777_1465_2975_3109; path=/; domain=.baidu.com, Set-Cookie: BAIDUID=C0C2EAA4B1805EF21EE097E2C6A3D448:FG=1; expires=Tue, 17-Sep-43 01:43:44 GMT; path=/; domain=.baidu.com, P3P: CP=" OTI DSP COR IVA OUR IND COM "]
+			
+			//gCurCookieStore (formatted ouput) value:
+			/*{
+			    [version: 0][name: BAIDUID][value: C0C2EAA4B1805EF21EE097E2C6A3D448:FG=1][domain: .baidu.com][path: /][expiry: Thu Sep 17 09:43:44 CST 2043]=java.lang.Object@55ba1c2b,
+			    [version: 0][name: BDSVRTM][value: 2][domain: www.baidu.com][path: /][expiry: null]=java.lang.Object@55ba1c2b,
+			    [version: 0][name: H_PS_PSSID][value: 3361_2777_1465_2975_3109][domain: .baidu.com][path: /][expiry: null]=java.lang.Object@55ba1c2b
+			}*/
+		} catch (ClientProtocolException cpe) {
             // TODO Auto-generated catch block
-        	cpe.printStackTrace();    
+        	cpe.printStackTrace();
         } catch (IOException ioe) {
             // TODO Auto-generated catch block
         	ioe.printStackTrace();
@@ -198,30 +316,39 @@ public class crifanLib {
 		
     	return response;
     }
+    
+    /** Get response from url  */
+    public HttpResponse getUrlResponse(String url)
+    {
+    	return getUrlResponse(url, null, null, 0);
+    }
 
     /** Get response html from url, headerDict, html charset, postDict */
-    public String getUrlRespHtml(String url,
-    							HttpParams headerParams, 
-								String htmlCharset, 
-								List<NameValuePair> postDict)
+    public String getUrlRespHtml(
+    							String url,
+    							List<NameValuePair> headerDict,
+    							List<NameValuePair> postDict,
+    				    		int timeout,
+    				    		String htmlCharset
+								)
     {
     	// init
     	String respHtml = "";
     	String defaultCharset = "UTF-8";
-    	// check para
-    	if( (null == htmlCharset) || (htmlCharset != null ) && (htmlCharset == ""))
+    	if((null == htmlCharset) || htmlCharset.isEmpty())
     	{
     		htmlCharset = defaultCharset;
     	}
-    	
     	//init 
     	//HttpClient httpClient = new DefaultHttpClient();
     	//DefaultHttpClient httpClient = new DefaultHttpClient();
     	//HttpUriRequest request;
+    	
+    	//headerParams.setParameter(CoreProtocolPNames.HTTP_CONTENT_CHARSET, htmlCharset);
 
 		try{
 			
-			HttpResponse response = getUrlResponse(url, headerParams, postDict);
+			HttpResponse response = getUrlResponse(url, headerDict, postDict, timeout);
 			
 			if(response.getStatusLine().getStatusCode()==HttpStatus.SC_OK){
 				HttpEntity respEnt = response.getEntity();
@@ -239,14 +366,17 @@ public class crifanLib {
 		
     	return respHtml;
     }
-
-    /** Get response html from url and designated html charset */
-    public String getUrlRespHtml(String url, String htmlCharset)
+    
+    public String getUrlRespHtml(String url, List<NameValuePair> headerDict, List<NameValuePair> postDict)
     {
-    	return getUrlRespHtml(url, null, htmlCharset, null);
+    	return getUrlRespHtml(url, headerDict, postDict, 0, "");
     }
     
-    /** Get response html from url, use default UTF-8 html charset */
+    public String getUrlRespHtml(String url, String htmlCharset)
+    {
+    	return getUrlRespHtml(url, null, null, 0, htmlCharset);
+    }
+    
     public String getUrlRespHtml(String url)
     {
     	String defaulCharset = "UTF-8";
@@ -266,11 +396,11 @@ public class crifanLib {
      * http://m5.songtaste.com/201212211424/2e8a8a85d93f56370d7fd96b5dc6ff23/5/5c/5cf23a97cef6fad6a464eb506c409dbd.mp3
      * with header: Referer=http://songtaste.com/
      *  */
-    public Boolean downlodFile(String url, File fullFilename, HttpParams headerParams, UpdateProgressCallback updateProgressCallbak)
+    public Boolean downlodFile(String url, File fullFilename, List<NameValuePair> headerDict, UpdateProgressCallback updateProgressCallbak)
     {
     	Boolean downloadOk = Boolean.FALSE;
     	
-    	HttpResponse response = getUrlResponse(url, headerParams, null);
+    	HttpResponse response = getUrlResponse(url, headerDict, null, 0);
 
 		if(response.getStatusLine().getStatusCode()==HttpStatus.SC_OK){
 			
@@ -318,7 +448,7 @@ public class crifanLib {
      *  */
     public String downlodFile(String url, String fullFilename)
     {
-    	return getUrlRespHtml(url, null, null, null);
+    	return downlodFile(url, fullFilename);
     }
     
     /** Extract single string from input whole string
