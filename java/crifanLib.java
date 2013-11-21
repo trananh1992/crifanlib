@@ -7,17 +7,21 @@
  * https://code.google.com/p/crifanlib/source/browse/trunk/java/crifanLib.java
  *  
  * [Version]
- * v2.0
+ * v2.7
  * 
  * [Contact]
  * http://www.crifan.com/about/me/
  * 
  * [Note]
  * 1. need add apache http lib:
- * 【已解决】Eclipse的java代码出错：The import org.apache cannot be resolved
+ * 銆愬凡瑙ｅ喅銆慐clipse鐨刯ava浠ｇ爜鍑洪敊锛歍he import org.apache cannot be resolved
  * http://www.crifan.com/java_eclipse_the_import_org_apache_cannot_be_resolved/
  * 
  * [History]
+ * [v2.7, 2013-11-21]
+ * 1. added getCurrentDatetimeStr, combinePath, trimQuote, getFileEncode, readFileContentStr
+ * 2. updated outputStringToFile, dateToString
+ * 
  * [v2.0, 2013-09-17]
  * 1. update getUrlResponse and getUrlRespHtml
  * 2. add getCurCookieList, getCurCookieStore, setCurCookieStore, setCurCookieList
@@ -33,6 +37,9 @@
 //package crifan.com;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.DataInputStream;
+import java.io.FileInputStream;
 //import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
@@ -87,6 +94,11 @@ import org.apache.http.protocol.HttpContext;
 
 import org.apache.http.util.EntityUtils;
 
+import info.monitorenter.cpdetector.io.ASCIIDetector;
+import info.monitorenter.cpdetector.io.CodepageDetectorProxy;
+import info.monitorenter.cpdetector.io.JChardetFacade;
+import info.monitorenter.cpdetector.io.ParsingDetector;
+import info.monitorenter.cpdetector.io.UnicodeDetector;
 
 //for android:
 //import crifan.com.downloadsongtastemusic.R;
@@ -148,34 +160,144 @@ public class crifanLib {
 	}
 	
 	/* format date value into string */
-	public String dateToString(Date date, String format)
+	public static String dateToString(Date date, String format)
 	{
-		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(format); 
-		String datetimeStr =simpleDateFormat.format(date);  //2013-07-08_033034
+		SimpleDateFormat simpleDateFormat = new SimpleDateFormat(format);
+		//Thu Nov 21 18:11:56 CST 2013  -->> 2013-11-21_181156
+		String datetimeStr =simpleDateFormat.format(date);
 		return datetimeStr;
 	}
 	
+	/* get current date time string */
+	public static String getCurrentDatetimeStr()
+	{
+		String curDatetimeStr = "";
+		Date curDate = new Date(); //Thu Nov 21 18:11:56 CST 2013
+		//12 hour format
+		//curDatetimeStr = dateToString(curDate, "yyyy-MM-dd_hhmmss"); //2013-11-21_061156
+		//24 hour format
+		curDatetimeStr = dateToString(curDate, "yyyy-MM-dd_HHmmss"); //2013-11-21_181156
+		return curDatetimeStr;
+	}
+
+	public static String combinePath(String path1, String path2)
+	{
+	    File file1 = new File(path1);
+	    File file2 = new File(file1, path2);
+	    return file2.getPath();
+	}
+	
+	//remove first and last quote char "
+	//eg: "xxx" -> xxx
+	public static String trimQuote(String inputStr){
+		String trimmedStr = null;
+		if(null != inputStr){
+			trimmedStr = inputStr;
+			if(trimmedStr.startsWith("\"")){
+				//remove first "
+				trimmedStr = trimmedStr.substring(1);
+			}
+			
+			if(trimmedStr.endsWith("\"")){
+				//remove last "
+				trimmedStr = trimmedStr.substring(0, trimmedStr.length() - 1);
+			}
+		}
+		return trimmedStr;
+	}
+	
+	public String getFileEncode(String path) throws IllegalArgumentException, FileNotFoundException, IOException {
+		CodepageDetectorProxy detector = CodepageDetectorProxy.getInstance();
+		detector.add(new ParsingDetector(false));
+		detector.add(JChardetFacade.getInstance());
+		detector.add(ASCIIDetector.getInstance());
+		detector.add(UnicodeDetector.getInstance());
+		java.nio.charset.Charset charset = null;
+		File f = new File(path);
+
+		charset = detector.detectCodepage(f.toURI().toURL());
+		
+		if (charset != null)
+			return charset.name();
+		else
+			return null;
+	}
+	
+
+	public static String readFileContentStr(String fullFilename)
+	{
+		String readOutStr = null;
+		
+        try {
+//          //BufferedReader bufReader = new BufferedReader(new FileReader(fullFilename));
+//          InputStreamReader isr = new InputStreamReader(new FileInputStream(fullFilename), "UTF-8");
+//          BufferedReader bufReader = new BufferedReader(isr);
+//          
+//          String lineSeparator = System.getProperty("line.separator");
+//          
+//          String line = "";
+//          while( ( line = bufReader.readLine() ) != null)
+//          {
+//          	readOutStr += line + lineSeparator;
+//          }
+//          bufReader.close();
+      	
+            DataInputStream dis = new DataInputStream(new FileInputStream(fullFilename));
+            try {
+                long len = new File(fullFilename).length();
+                if (len > Integer.MAX_VALUE) throw new IOException("File "+fullFilename+" too large, was "+len+" bytes.");
+                byte[] bytes = new byte[(int) len];
+                dis.readFully(bytes);
+                readOutStr = new String(bytes, "UTF-8");
+            } finally {
+                dis.close();
+            }
+
+			//Log.d("readFileContentStr", "Successfully to read out string from file "+ fullFilename);
+        } catch (IOException e) {
+        	readOutStr = null;
+
+	    	//e.printStackTrace();
+	    	//Log.d("readFileContentStr", "Fail to read out string from file "+ fullFilename);
+		}
+        
+        return readOutStr;
+	}
+	
+
 	/* output string into file */
-	public boolean outputStringToFile(String strToOutput, String fullFilename)
+	public static boolean outputStringToFile(String strToOutput, String fullFilename)
 	{
 		boolean ouputOk = true;
-		
-        File newTextFile = new File(fullFilename);
-        FileWriter fw;
+				
         try {
+        	/* Method1 */
+            File newTextFile = new File(fullFilename);
+            FileWriter fw;
 			fw = new FileWriter(newTextFile);
 	        fw.write(strToOutput);
 	        fw.close();
+	        
+	        /* Method2 */
+	        /*
+			//FileOutputStream ouputStream = openFileOutput(fullFilename, MODE_PRIVATE);
+			FileOutputStream ouputStream = new FileOutputStream(fullFilename);
+			byte [] preprocessedBytes = strToOutput.getBytes(); 
+			ouputStream.write(preprocessedBytes); 
+			ouputStream.close();
+			*/
+	        
+			//Log.d("outputStringToFile", "Successfully to save string to file: "+fullFilename);
         } catch (IOException e) {
-			// TODO Auto-generated catch block
-			//e.printStackTrace();
-        	
         	ouputOk = false;
+        	
+	    	//e.printStackTrace();
+	    	//Log.d("outputStringToFile", "Fail to save string to file: "+fullFilename);
 		}
         
         return ouputOk;
 	}
-		
+			
 	public void dbgPrintCookies(List<Cookie> cookieList, String url)
 	{
 		if((null != url) && (!url.isEmpty()))
